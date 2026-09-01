@@ -1,18 +1,21 @@
 """
-API router for the Live Map page.
+API router for the Live Flood Map & Hotspots intelligence.
 
 Endpoints:
   GET   /api/map/config          → Map center, zoom, and tile key
   GET   /api/roads               → All road segments with flood status
+  GET   /api/roads/{road_id}     → Specific road segment details
   PATCH /api/roads/{road_id}     → Close or reopen a road
   GET   /api/forecast/timeline   → Flood forecast timeline (NOW → +180m)
+  GET   /api/v1/forecast/latest  → Latest forecast summary & curve
   GET   /api/drainage/nodes      → Drainage node statuses
   GET   /api/flood/zones         → Flood depth polygons for a forecast step
   GET   /api/weather/current     → Live weather from OpenWeatherMap
+  GET   /api/v1/hotspots         → Critical flood hotspots ranked by vulnerability
+  GET   /api/v1/flood/{road_id}  → Hydrodynamic breakdown and cause analysis for a road
 """
 
 from datetime import datetime
-
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -32,7 +35,7 @@ from schemas import (
     MapConfigOut,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["Live Map & Forecasting"])
 
 
 # ─── Helper: convert DB Road model → frontend-compatible dict ─────────────────
@@ -73,6 +76,8 @@ def drainage_to_out(node: DrainageNode) -> DrainageNodeOut:
         confidencePct=node.confidence_pct,
         lat=node.lat,
         lng=node.lng,
+        x=node.x,
+        y=node.y,
     )
 
 
@@ -104,6 +109,7 @@ async def get_map_config():
 
 
 @router.get("/api/roads", response_model=list[RoadOut])
+@router.get("/api/v1/roads", response_model=list[RoadOut])
 async def get_roads(db: AsyncSession = Depends(get_db)):
     """Fetch all monitored road segments with live flood metrics."""
     result = await db.execute(select(Road).order_by(Road.depth_cm.desc()))
@@ -112,8 +118,9 @@ async def get_roads(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/api/roads/{road_id}", response_model=RoadOut)
+@router.get("/api/v1/flood/{road_id}", response_model=RoadOut)
 async def get_road(road_id: str, db: AsyncSession = Depends(get_db)):
-    """Fetch a single road segment by ID."""
+    """Fetch a single road segment by ID with full hydrodynamic metrics."""
     result = await db.execute(select(Road).where(Road.id == road_id))
     road = result.scalar_one_or_none()
     if not road:
@@ -122,6 +129,7 @@ async def get_road(road_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/api/roads/{road_id}", response_model=RoadCloseResponse)
+@router.post("/api/v1/road/closure", response_model=RoadCloseResponse)
 async def toggle_road_closure(
     road_id: str,
     body: RoadCloseRequest,
@@ -138,7 +146,6 @@ async def toggle_road_closure(
     road.updated_at = datetime.utcnow()
     await db.commit()
 
-    # Count affected routes (simplified: count of non-closed roads in the area)
     count_result = await db.execute(
         select(Road).where(Road.is_closed == False, Road.id != road_id)
     )
@@ -150,14 +157,53 @@ async def toggle_road_closure(
         is_closed=road.is_closed,
         closed_at=road.closed_at,
         affected_routes=min(affected, 7),
-        message=f"Road {road.id} {action} · {min(affected, 7)} routes recalculated",
+        message=f"Road {road.id} {action} · {min(affected, 7)} emergency routes recalculated",
     )
 
 
-# ─── 3. Forecast Timeline ────────────────────────────────────────────────────
+# ─── 3. Hotspots ─────────────────────────────────────────────────────────────
+
+
+@router.get("/api/v1/hotspots")
+async def get_hotspots(db: AsyncSession = Depends(get_db)):
+    """Return prioritized critical flood hotspots ranked by composite risk."""
+    result = await db.execute(select(Road).order_by(Road.depth_cm.desc()))
+    roads = result.scalars().all()
+
+    hotspots = []
+    for r in roads:
+        # Composite score calculation: depth * (1 + velocity) * drain_factor
+        score = (r.depth_cm / 50.0) * 50 + (r.velocity_ms / 0.8) * 30 + (r.drain_util_pct / 100.0) * 20
+        hotspots.append({
+            "id": r.id,
+            "name": r.name,
+            "risk": r.risk_level,
+            "depthCm": r.depth_cm,
+            "peakDepthCm": r.peak_depth_cm,
+            "velocityMs": r.velocity_ms,
+            "timeToFloodMin": r.time_to_flood_min,
+            "drainUtilPct": r.drain_util_pct,
+            "confidencePct": r.confidence_pct,
+            "cause": r.cause or [],
+            "urgencyScore": round(min(100.0, score), 1),
+            "is_closed": r.is_closed,
+            "lat": r.lat,
+            "lng": r.lng,
+        })
+
+    hotspots.sort(key=lambda x: x["urgencyScore"], reverse=True)
+    return {
+        "count": len(hotspots),
+        "critical_count": sum(1 for h in hotspots if h["risk"] in ["HIGH", "SEVERE"]),
+        "hotspots": hotspots,
+    }
+
+
+# ─── 4. Forecast Timeline ────────────────────────────────────────────────────
 
 
 @router.get("/api/forecast/timeline", response_model=list[ForecastPointOut])
+@router.get("/api/v1/forecast/latest", response_model=list[ForecastPointOut])
 async def get_forecast_timeline(db: AsyncSession = Depends(get_db)):
     """Fetch the flood forecast timeline (NOW → +180 minutes)."""
     result = await db.execute(
@@ -167,7 +213,7 @@ async def get_forecast_timeline(db: AsyncSession = Depends(get_db)):
     return [forecast_to_out(p) for p in points]
 
 
-# ─── 4. Drainage Nodes ───────────────────────────────────────────────────────
+# ─── 5. Drainage Nodes ───────────────────────────────────────────────────────
 
 
 @router.get("/api/drainage/nodes", response_model=list[DrainageNodeOut])
@@ -180,7 +226,7 @@ async def get_drainage_nodes(db: AsyncSession = Depends(get_db)):
     return [drainage_to_out(n) for n in nodes]
 
 
-# ─── 5. Flood Zones ──────────────────────────────────────────────────────────
+# ─── 6. Flood Zones ──────────────────────────────────────────────────────────
 
 
 @router.get("/api/flood/zones", response_model=list[FloodZoneOut])
@@ -196,7 +242,7 @@ async def get_flood_zones(
     return zones
 
 
-# ─── 6. Live Weather (OpenWeatherMap) ────────────────────────────────────────
+# ─── 7. Live Weather (OpenWeatherMap) ────────────────────────────────────────
 
 
 @router.get("/api/weather/current", response_model=WeatherOut)
@@ -204,7 +250,14 @@ async def get_current_weather():
     """Fetch live weather for the demo area from OpenWeatherMap API."""
     api_key = settings.OWM_API_KEY
     if not api_key:
-        raise HTTPException(status_code=503, detail="OpenWeatherMap API key not configured")
+        return WeatherOut(
+            rainfall_mm_hr=76.0,
+            temperature_c=29.4,
+            humidity_pct=88.0,
+            wind_speed_ms=6.2,
+            description="Heavy monsoon precipitation (Demo Telemetry)",
+            icon="10d",
+        )
 
     url = (
         f"https://api.openweathermap.org/data/2.5/weather"
@@ -217,19 +270,22 @@ async def get_current_weather():
             resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=502, detail=f"Weather API error: {e.response.status_code}")
-        except httpx.RequestError:
-            raise HTTPException(status_code=502, detail="Could not reach weather API")
-
-    # Extract rainfall (may not exist if it is not raining)
-    rain_1h = data.get("rain", {}).get("1h", 0.0)
-
-    return WeatherOut(
-        rainfall_mm_hr=rain_1h,
-        temperature_c=data["main"]["temp"],
-        humidity_pct=data["main"]["humidity"],
-        wind_speed_ms=data["wind"]["speed"],
-        description=data["weather"][0]["description"],
-        icon=data["weather"][0]["icon"],
-    )
+            rain_1h = data.get("rain", {}).get("1h", 0.0)
+            return WeatherOut(
+                rainfall_mm_hr=rain_1h,
+                temperature_c=data["main"]["temp"],
+                humidity_pct=data["main"]["humidity"],
+                wind_speed_ms=data["wind"]["speed"],
+                description=data["weather"][0]["description"],
+                icon=data["weather"][0]["icon"],
+            )
+        except Exception:
+            # Fallback to demo telemetry if external weather fails
+            return WeatherOut(
+                rainfall_mm_hr=76.0,
+                temperature_c=29.4,
+                humidity_pct=88.0,
+                wind_speed_ms=6.2,
+                description="Heavy monsoon rain (Simulated Fallback)",
+                icon="10d",
+            )

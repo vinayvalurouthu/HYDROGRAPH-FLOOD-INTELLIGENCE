@@ -37,6 +37,9 @@ export interface Road {
   cause: string[];
   closed: boolean;
   svgPath?: string;
+  lat: number;
+  lng: number;
+  geojson?: any;
 }
 
 export interface SOSIncident {
@@ -86,6 +89,8 @@ export interface Shelter {
   accessibility: boolean;
   lastUpdated: string;
   recommended?: boolean;
+  lat: number;
+  lng: number;
 }
 
 export interface DrainageNode {
@@ -99,6 +104,8 @@ export interface DrainageNode {
   confidencePct: number;
   x: number;
   y: number;
+  lat: number;
+  lng: number;
 }
 
 export interface SystemService {
@@ -154,6 +161,8 @@ export const roads: Road[] = [
     drainUtilPct: 98,
     cause: ["Heavy rainfall", "Drainage stress"],
     closed: false,
+    lat: 25.6145,
+    lng: 85.1320,
   },
   {
     id: "JN-14",
@@ -169,6 +178,8 @@ export const roads: Road[] = [
     drainUtilPct: 88,
     cause: ["Surface runoff", "Blocked inlet"],
     closed: false,
+    lat: 25.6073,
+    lng: 85.1456,
   },
   {
     id: "MR-01",
@@ -184,6 +195,8 @@ export const roads: Road[] = [
     drainUtilPct: 82,
     cause: ["Heavy rainfall", "Low elevation"],
     closed: false,
+    lat: 25.6030,
+    lng: 85.1290,
   },
   {
     id: "NH-48",
@@ -199,6 +212,8 @@ export const roads: Road[] = [
     drainUtilPct: 64,
     cause: ["Rainfall accumulation"],
     closed: false,
+    lat: 25.6190,
+    lng: 85.1180,
   },
   {
     id: "CR-07",
@@ -214,6 +229,8 @@ export const roads: Road[] = [
     drainUtilPct: 100,
     cause: ["River overflow", "Drainage failure"],
     closed: true,
+    lat: 25.5960,
+    lng: 85.1510,
   },
   {
     id: "RD-23",
@@ -229,6 +246,8 @@ export const roads: Road[] = [
     drainUtilPct: 42,
     cause: ["Light rainfall"],
     closed: false,
+    lat: 25.6250,
+    lng: 85.1550,
   },
 ];
 
@@ -246,8 +265,8 @@ export const sosIncidents: SOSIncident[] = [
     waitingMin: 8,
     status: "EN_ROUTE",
     floodRisk: "SEVERE",
-    lat: 19.076,
-    lng: 72.877,
+    lat: 25.6040,
+    lng: 85.1290,
     timestamps: [
       { status: "SOS received", time: "14:02" },
       { status: "Location verified", time: "14:03" },
@@ -268,8 +287,8 @@ export const sosIncidents: SOSIncident[] = [
     waitingMin: 14,
     status: "ASSIGNED",
     floodRisk: "SEVERE",
-    lat: 19.074,
-    lng: 72.882,
+    lat: 25.5970,
+    lng: 85.1500,
     timestamps: [
       { status: "SOS received", time: "13:52" },
       { status: "Location verified", time: "13:54" },
@@ -289,8 +308,8 @@ export const sosIncidents: SOSIncident[] = [
     waitingMin: 22,
     status: "VERIFIED",
     floodRisk: "HIGH",
-    lat: 19.079,
-    lng: 72.875,
+    lat: 25.6080,
+    lng: 85.1450,
     timestamps: [
       { status: "SOS received", time: "13:42" },
       { status: "Location verified", time: "13:45" },
@@ -308,8 +327,8 @@ export const sosIncidents: SOSIncident[] = [
     waitingMin: 4,
     status: "RECEIVED",
     floodRisk: "HIGH",
-    lat: 19.081,
-    lng: 72.873,
+    lat: 25.6100,
+    lng: 85.1340,
     timestamps: [{ status: "SOS received", time: "14:18" }],
   },
 ];
@@ -389,6 +408,8 @@ export const shelters: Shelter[] = [
     accessibility: true,
     lastUpdated: "2 min ago",
     recommended: false,
+    lat: 25.6200,
+    lng: 85.1230,
   },
   {
     id: "SH-02",
@@ -406,6 +427,8 @@ export const shelters: Shelter[] = [
     power: true,
     accessibility: false,
     lastUpdated: "5 min ago",
+    lat: 25.6160,
+    lng: 85.1410,
   },
   {
     id: "SH-03",
@@ -424,6 +447,8 @@ export const shelters: Shelter[] = [
     accessibility: true,
     lastUpdated: "1 min ago",
     recommended: true,
+    lat: 25.5920,
+    lng: 85.1580,
   },
   {
     id: "SH-04",
@@ -441,6 +466,8 @@ export const shelters: Shelter[] = [
     power: false,
     accessibility: true,
     lastUpdated: "8 min ago",
+    lat: 25.6270,
+    lng: 85.1110,
   },
 ];
 
@@ -457,6 +484,8 @@ export const drainageNodes: DrainageNode[] = [
     confidencePct: 76,
     x: 380,
     y: 220,
+    lat: 25.6110,
+    lng: 85.1350,
   },
   {
     id: "N-187",
@@ -469,6 +498,8 @@ export const drainageNodes: DrainageNode[] = [
     confidencePct: 88,
     x: 260,
     y: 310,
+    lat: 25.6020,
+    lng: 85.1270,
   },
   {
     id: "N-312",
@@ -480,6 +511,8 @@ export const drainageNodes: DrainageNode[] = [
     confidencePct: 91,
     x: 520,
     y: 180,
+    lat: 25.6180,
+    lng: 85.1480,
   },
   {
     id: "N-089",
@@ -492,6 +525,8 @@ export const drainageNodes: DrainageNode[] = [
     confidencePct: 72,
     x: 440,
     y: 360,
+    lat: 25.5990,
+    lng: 85.1400,
   },
   {
     id: "N-156",
@@ -503,6 +538,8 @@ export const drainageNodes: DrainageNode[] = [
     confidencePct: 94,
     x: 160,
     y: 140,
+    lat: 25.6240,
+    lng: 85.1190,
   },
 ];
 
