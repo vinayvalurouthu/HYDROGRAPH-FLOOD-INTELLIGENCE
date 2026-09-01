@@ -22,6 +22,13 @@ logs/
 # Python
 __pycache__/
 *.py[cod]
-*.egg-info/
+*$py.class
+*.so
+.Python
+env/
 venv/
-.venv/
+ENV/
+env.bak/
+venv.bak/
+*.sqlite3
+*.db
