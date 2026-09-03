@@ -463,3 +463,107 @@ class AnalyticsOverviewOut(BaseModel):
     modelConfidencePct: float
     historicalAccuracyPct: float
     hourlyFlood: list[dict]
+
+
+# ─── 15. Hotspot Intelligence ─────────────────────────────────────────────────
+
+
+class HotspotScoreOut(BaseModel):
+    """Breakdown of multi-factor composite risk score."""
+
+    composite: float
+    depth_factor: float
+    velocity_factor: float
+    drainage_factor: float
+    urgency_factor: float
+    rainfall_factor: float
+    confidence_factor: float
+    risk_tier: str  # CRITICAL / SEVERE / HIGH / MODERATE / LOW
+
+
+class NearbyEntityOut(BaseModel):
+    """A nearby SOS incident, shelter, or drainage node correlated to a hotspot."""
+
+    id: str
+    name: str
+    distance_km: float
+    entity_type: str  # SOS / SHELTER / DRAINAGE
+    status: str
+    detail: str
+
+
+class HotspotDetailOut(BaseModel):
+    """Complete intelligence profile for a single flood hotspot."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    id: str
+    name: str
+    risk: str
+    depthCm: float
+    peakDepthCm: float
+    velocityMs: float
+    durationMin: int
+    timeToFloodMin: int
+    confidencePct: float
+    rainfallMmHr: float
+    drainUtilPct: float
+    cause: list[str] = Field(default_factory=list)
+    is_closed: bool
+    lat: float
+    lng: float
+    geojson: str | None = None
+
+    # Intelligence layers
+    score: HotspotScoreOut
+    actionRecommendation: str
+    actionPriority: str
+    trend: str  # WORSENING / STABLE / IMPROVING
+    nearbySOS: list[NearbyEntityOut] = Field(default_factory=list)
+    nearbyShelters: list[NearbyEntityOut] = Field(default_factory=list)
+    nearbyDrainage: list[NearbyEntityOut] = Field(default_factory=list)
+    affectedPopulation: int = 0
+
+
+class HotspotListOut(BaseModel):
+    """Paginated hotspot list with summary statistics."""
+
+    count: int
+    critical_count: int
+    severe_count: int
+    high_count: int
+    total_affected_population: int
+    avg_urgency_score: float
+    worst_hotspot_id: str | None = None
+    hotspots: list[HotspotDetailOut]
+
+
+class HotspotSummaryOut(BaseModel):
+    """Dashboard-level hotspot summary for KPI cards."""
+
+    total_hotspots: int
+    critical_hotspots: int
+    severe_hotspots: int
+    high_hotspots: int
+    moderate_hotspots: int
+    low_hotspots: int
+    closed_roads: int
+    avg_depth_cm: float
+    max_depth_cm: float
+    avg_urgency_score: float
+    total_affected_population: int
+    worsening_count: int
+    stable_count: int
+    improving_count: int
+    risk_distribution: dict[str, int]  # {"CRITICAL": 2, "SEVERE": 1, ...}
+
+
+class HotspotHeatmapPointOut(BaseModel):
+    """Lightweight lat/lng/intensity point for heatmap rendering."""
+
+    lat: float
+    lng: float
+    intensity: float  # 0-1 normalized urgency
+    risk: str
+    id: str
+    name: str

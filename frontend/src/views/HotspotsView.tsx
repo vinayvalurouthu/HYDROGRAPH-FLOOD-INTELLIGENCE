@@ -1,6 +1,4 @@
-import { roads, confidenceFactors, roadForecast } from "../mockData";
-import type { Road } from "../mockData";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   AreaChart,
   Area,
@@ -10,13 +8,53 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { MapPin, X, Info } from "lucide-react";
+import {
+  X,
+  Info,
+  Loader2,
+  RefreshCw,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  AlertTriangle,
+  Shield,
+  Droplets,
+  Users,
+  Navigation,
+} from "lucide-react";
+import {
+  getHotspots,
+  getHotspotSummary,
+  closeHotspotRoad,
+  reopenHotspotRoad,
+  getForecastTimeline,
+} from "../services/api";
+import type {
+  HotspotDetail,
+  HotspotListResponse,
+  HotspotSummary,
+  NearbyEntity,
+} from "../services/api";
+import type { ForecastPoint } from "../mockData";
 
 const riskColors: Record<string, string> = {
+  CRITICAL: "#dc2626",
   SEVERE: "#ef4444",
   HIGH: "#f97316",
   MODERATE: "#f59e0b",
   LOW: "#10b981",
+};
+
+const trendIcons: Record<string, typeof TrendingUp> = {
+  WORSENING: TrendingUp,
+  STABLE: Minus,
+  IMPROVING: TrendingDown,
+};
+
+const trendColors: Record<string, string> = {
+  WORSENING: "#ef4444",
+  STABLE: "#f59e0b",
+  IMPROVING: "#10b981",
 };
 
 function ConfidenceRing({ pct }: { pct: number }) {
@@ -49,56 +87,260 @@ function ConfidenceRing({ pct }: { pct: number }) {
   );
 }
 
+function UrgencyScoreRing({ score, tier }: { score: number; tier: string }) {
+  const r = 22;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - score / 100);
+  const color = riskColors[tier] || "#4a6080";
+  return (
+    <div className="relative w-14 h-14 flex items-center justify-center">
+      <svg className="absolute inset-0" viewBox="0 0 52 52" width="52" height="52">
+        <circle cx="26" cy="26" r={r} fill="none" stroke="#1a2640" strokeWidth="3" />
+        <circle
+          cx="26"
+          cy="26"
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="3"
+          strokeDasharray={circ}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform="rotate(-90 26 26)"
+          style={{ transition: "stroke-dashoffset 0.8s ease" }}
+        />
+      </svg>
+      <span className="text-[10px] font-mono font-black z-10" style={{ color }}>
+        {Math.round(score)}
+      </span>
+    </div>
+  );
+}
+
+function NearbyEntityBadge({ entity }: { entity: NearbyEntity }) {
+  const colors: Record<string, string> = {
+    SOS: "#ef4444",
+    SHELTER: "#10b981",
+    DRAINAGE: "#3b82f6",
+  };
+  const color = colors[entity.entity_type] || "#4a6080";
+  return (
+    <div
+      className="rounded-lg px-2.5 py-1.5 flex items-center gap-2"
+      style={{ background: `${color}10`, border: `1px solid ${color}30` }}
+    >
+      <div className="flex-shrink-0">
+        {entity.entity_type === "SOS" && <AlertTriangle size={12} style={{ color }} />}
+        {entity.entity_type === "SHELTER" && <Shield size={12} style={{ color }} />}
+        {entity.entity_type === "DRAINAGE" && <Droplets size={12} style={{ color }} />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] font-mono font-bold truncate" style={{ color }}>
+          {entity.id}
+        </div>
+        <div className="text-[9px] truncate" style={{ color: "#8da0b8" }}>
+          {entity.detail}
+        </div>
+      </div>
+      <span className="text-[9px] font-mono flex-shrink-0" style={{ color: "#4a6080" }}>
+        {entity.distance_km} km
+      </span>
+    </div>
+  );
+}
+
+const AUTO_REFRESH_MS = 30000; // 30s auto-refresh
+
 export default function HotspotsView({
   onNavigate,
 }: {
   onNavigate: (view: string, roadId?: string) => void;
 }) {
-  const sorted = [...roads].sort(
-    (a, b) => b.depthCm - a.depthCm || a.timeToFloodMin - b.timeToFloodMin
-  );
-  const [selected, setSelected] = useState<Road>(sorted[0]);
+  const [data, setData] = useState<HotspotListResponse | null>(null);
+  const [summary, setSummary] = useState<HotspotSummary | null>(null);
+  const [forecast, setForecast] = useState<ForecastPoint[]>([]);
+  const [selected, setSelected] = useState<HotspotDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showConfidence, setShowConfidence] = useState(false);
+  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
+  const [closingRoad, setClosingRoad] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const [hotspotsRes, summaryRes, forecastRes] = await Promise.all([
+        getHotspots(),
+        getHotspotSummary(),
+        getForecastTimeline(),
+      ]);
+      setData(hotspotsRes);
+      setSummary(summaryRes);
+      setForecast(forecastRes);
+      setLastUpdated(new Date());
+      // Select first hotspot if none selected or if current selection was removed
+      if (hotspotsRes.hotspots.length > 0) {
+        setSelected((prev) => {
+          if (!prev) return hotspotsRes.hotspots[0];
+          const found = hotspotsRes.hotspots.find((h) => h.id === prev.id);
+          return found || hotspotsRes.hotspots[0];
+        });
+      }
+    } catch (err) {
+      console.error("[HotspotsView] Failed to fetch data:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Initial fetch + auto-refresh every 30s
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(() => fetchData(true), AUTO_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  const handleCloseRoad = async () => {
+    if (!selected) return;
+    setClosingRoad(true);
+    try {
+      if (selected.is_closed) {
+        await reopenHotspotRoad(selected.id);
+      } else {
+        await closeHotspotRoad(selected.id);
+      }
+      await fetchData(true);
+    } catch (err) {
+      console.error("[HotspotsView] Road closure failed:", err);
+    } finally {
+      setClosingRoad(false);
+    }
+  };
+
+  // Loading state
+  if (loading || !data || !selected) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={32} className="animate-spin" style={{ color: "#06b6d4" }} />
+          <span className="text-sm font-mono" style={{ color: "#4a6080" }}>
+            Loading hotspot intelligence...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const hotspots = data.hotspots;
+  const riskColor = riskColors[selected.score.risk_tier] || riskColors[selected.risk] || "#4a6080";
+  const TrendIcon = trendIcons[selected.trend] || Minus;
+  const trendColor = trendColors[selected.trend] || "#4a6080";
+
+  // Build forecast chart data from timeline
+  const chartData = forecast.map((fp) => ({
+    time: fp.time,
+    depth: fp.depthCm,
+    threshold: 30,
+  }));
 
   return (
     <div className="h-full flex overflow-hidden">
-      {/* Hotspot list */}
+      {/* Hotspot sidebar list */}
       <div
         className="w-72 flex-shrink-0 border-r overflow-y-auto"
         style={{ borderColor: "#1a2640" }}
       >
+        {/* Header with live stats */}
         <div className="px-4 py-3" style={{ borderBottom: "1px solid #1a2640" }}>
-          <h2 className="text-sm font-bold text-white">TOP FLOOD HOTSPOTS</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-white">TOP FLOOD HOTSPOTS</h2>
+            <button
+              onClick={() => fetchData(true)}
+              className="p-1 rounded hover:bg-white/5 transition-colors"
+              title="Refresh data"
+            >
+              <RefreshCw
+                size={12}
+                className={refreshing ? "animate-spin" : ""}
+                style={{ color: "#4a6080" }}
+              />
+            </button>
+          </div>
           <p className="text-[11px] mt-0.5" style={{ color: "#4a6080" }}>
-            Ranked by current depth + urgency
+            Ranked by AI urgency score
           </p>
+          {/* Live summary badges */}
+          {summary && (
+            <div className="flex gap-1.5 mt-2 flex-wrap">
+              {summary.critical_hotspots > 0 && (
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                  style={{ background: "rgba(220,38,38,0.15)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.3)" }}
+                >
+                  {summary.critical_hotspots} CRITICAL
+                </span>
+              )}
+              {summary.severe_hotspots > 0 && (
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                  style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}
+                >
+                  {summary.severe_hotspots} SEVERE
+                </span>
+              )}
+              {summary.worsening_count > 0 && (
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                  style={{ background: "rgba(239,68,68,0.1)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)" }}
+                >
+                  {summary.worsening_count} WORSENING
+                </span>
+              )}
+            </div>
+          )}
+          {lastUpdated && (
+            <div className="text-[9px] font-mono mt-1.5" style={{ color: "#374151" }}>
+              Updated {lastUpdated.toLocaleTimeString()}
+            </div>
+          )}
         </div>
+
+        {/* Hotspot cards */}
         <div className="p-3 space-y-2">
-          {sorted.map((road, i) => {
-            const isSelected = selected.id === road.id;
+          {hotspots.map((hotspot, i) => {
+            const isSelected = selected.id === hotspot.id;
+            const color = riskColors[hotspot.score.risk_tier] || riskColors[hotspot.risk] || "#4a6080";
+            const HTrendIcon = trendIcons[hotspot.trend] || Minus;
             return (
               <button
-                key={road.id}
-                onClick={() => setSelected(road)}
+                key={hotspot.id}
+                onClick={() => {
+                  setSelected(hotspot);
+                  setShowConfidence(false);
+                  setShowScoreBreakdown(false);
+                }}
                 className="w-full text-left rounded-xl p-3 transition-all"
                 style={{
                   background: isSelected
-                    ? `${riskColors[road.risk]}10`
+                    ? `${color}10`
                     : "rgba(12,19,34,0.5)",
-                  border: `1px solid ${isSelected ? riskColors[road.risk] + "50" : "#1a2640"}`,
+                  border: `1px solid ${isSelected ? color + "50" : "#1a2640"}`,
                 }}
               >
                 <div className="flex items-center gap-3">
                   <span
                     className="text-sm font-mono font-black w-6 text-center flex-shrink-0"
-                    style={{ color: riskColors[road.risk] }}
+                    style={{ color }}
                   >
                     {String(i + 1).padStart(2, "0")}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-white">{road.id}</span>
-                      {road.closed && (
+                      <span className="text-xs font-bold text-white">{hotspot.id}</span>
+                      {hotspot.is_closed && (
                         <span
                           className="text-[9px] font-mono px-1.5 rounded"
                           style={{ background: "rgba(107,114,128,0.2)", color: "#9ca3af" }}
@@ -106,20 +348,24 @@ export default function HotspotsView({
                           CLOSED
                         </span>
                       )}
+                      <HTrendIcon
+                        size={10}
+                        style={{ color: trendColors[hotspot.trend] || "#4a6080" }}
+                      />
                     </div>
                     <div className="text-[10px] mt-0.5 truncate" style={{ color: "#4a6080" }}>
-                      {road.name}
+                      {hotspot.name}
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <div
                       className="text-sm font-mono font-black"
-                      style={{ color: riskColors[road.risk] }}
+                      style={{ color }}
                     >
-                      {road.depthCm} cm
+                      {hotspot.depthCm} cm
                     </div>
                     <div className="text-[10px] font-mono" style={{ color: "#4a6080" }}>
-                      {road.timeToFloodMin} min
+                      {hotspot.timeToFloodMin} min
                     </div>
                   </div>
                 </div>
@@ -128,22 +374,25 @@ export default function HotspotsView({
                   <span
                     className="text-[10px] font-mono px-1.5 py-0.5 rounded uppercase"
                     style={{
-                      background: `${riskColors[road.risk]}15`,
-                      color: riskColors[road.risk],
-                      border: `1px solid ${riskColors[road.risk]}40`,
+                      background: `${color}15`,
+                      color,
+                      border: `1px solid ${color}40`,
                     }}
                   >
-                    {road.risk}
+                    {hotspot.score.risk_tier}
                   </span>
                   <div className="flex-1 h-1 rounded-full" style={{ background: "#1a2640" }}>
                     <div
-                      className="h-full rounded-full"
+                      className="h-full rounded-full transition-all duration-500"
                       style={{
-                        width: `${(road.depthCm / 70) * 100}%`,
-                        background: riskColors[road.risk],
+                        width: `${hotspot.score.composite}%`,
+                        background: color,
                       }}
                     />
                   </div>
+                  <span className="text-[9px] font-mono" style={{ color: "#4a6080" }}>
+                    {Math.round(hotspot.score.composite)}
+                  </span>
                 </div>
               </button>
             );
@@ -151,14 +400,15 @@ export default function HotspotsView({
         </div>
       </div>
 
-      {/* Detail */}
+      {/* Detail panel */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
-        {/* Header */}
+        {/* Header card */}
         <div
           className="rounded-xl p-4 animate-slide-up"
+          key={selected.id}
           style={{
-            background: `${riskColors[selected.risk]}08`,
-            border: `1px solid ${riskColors[selected.risk]}40`,
+            background: `${riskColor}08`,
+            border: `1px solid ${riskColor}40`,
           }}
         >
           <div className="flex items-start justify-between">
@@ -167,43 +417,60 @@ export default function HotspotsView({
                 <h2 className="text-2xl font-mono font-black text-white">{selected.id}</h2>
                 <span
                   className="text-sm font-mono font-bold px-3 py-1 rounded-full"
-                  style={{ background: riskColors[selected.risk], color: "white" }}
+                  style={{ background: riskColor, color: "white" }}
                 >
-                  {selected.risk}
+                  {selected.score.risk_tier}
                 </span>
-                {selected.closed && (
+                {selected.is_closed && (
                   <span className="text-sm font-mono px-3 py-1 rounded-full" style={{ background: "#374151", color: "#9ca3af" }}>
                     CLOSED
                   </span>
                 )}
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: `${trendColor}15`, border: `1px solid ${trendColor}30` }}>
+                  <TrendIcon size={12} style={{ color: trendColor }} />
+                  <span className="text-[10px] font-mono font-bold" style={{ color: trendColor }}>
+                    {selected.trend}
+                  </span>
+                </div>
               </div>
               <p className="text-sm" style={{ color: "#8da0b8" }}>
                 {selected.name}
               </p>
+              {/* Priority badge */}
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-mono" style={{ color: "#4a6080" }}>
+                  {selected.actionPriority}
+                </span>
+                {selected.affectedPopulation > 0 && (
+                  <span className="text-[10px] font-mono flex items-center gap-1" style={{ color: "#f59e0b" }}>
+                    <Users size={10} />
+                    {selected.affectedPopulation} affected
+                  </span>
+                )}
+              </div>
             </div>
-            <ConfidenceRing pct={selected.confidencePct} />
+            <div className="flex items-center gap-2">
+              <UrgencyScoreRing score={selected.score.composite} tier={selected.score.risk_tier} />
+              <ConfidenceRing pct={selected.confidencePct} />
+            </div>
           </div>
 
-          {/* Action intelligence */}
+          {/* Live AI action recommendation */}
           <div
             className="mt-3 rounded-lg px-3 py-2"
             style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)" }}
           >
             <span className="text-[10px] font-mono uppercase" style={{ color: "#4a6080" }}>
-              ACTION INTELLIGENCE
+              AI ACTION INTELLIGENCE
             </span>
             <p className="text-sm font-semibold text-white mt-0.5">
-              {selected.risk === "SEVERE"
-                ? `CLOSE IMMEDIATELY — severe flooding in ${selected.timeToFloodMin} min`
-                : selected.risk === "HIGH"
-                  ? `AVOID after +${selected.timeToFloodMin} min — depth exceeding safe threshold soon`
-                  : `MONITOR — moderate risk, safe for now`}
+              {selected.actionRecommendation}
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          {/* Metrics */}
+          {/* Current Conditions */}
           <div
             className="rounded-xl p-4"
             style={{ background: "rgba(12,19,34,0.8)", border: "1px solid #1a2640" }}
@@ -227,7 +494,7 @@ export default function HotspotsView({
                   </span>
                   <span
                     className="text-sm font-mono font-bold"
-                    style={{ color: row.warn ? riskColors[selected.risk] : "#f0f4ff" }}
+                    style={{ color: row.warn ? riskColor : "#f0f4ff" }}
                   >
                     {row.v}
                   </span>
@@ -244,7 +511,7 @@ export default function HotspotsView({
               </div>
               {selected.cause.map((c) => (
                 <div key={c} className="text-xs text-white">
-                  • {c}
+                  &#8226; {c}
                 </div>
               ))}
             </div>
@@ -269,11 +536,11 @@ export default function HotspotsView({
               </button>
             </div>
             <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={roadForecast} margin={{ top: 5, right: 5, bottom: 0, left: -10 }}>
+              <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: -10 }}>
                 <defs>
                   <linearGradient id="hotspotGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={riskColors[selected.risk]} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={riskColors[selected.risk]} stopOpacity={0} />
+                    <stop offset="5%" stopColor={riskColor} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={riskColor} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis
@@ -285,7 +552,7 @@ export default function HotspotsView({
                 <YAxis hide />
                 <Tooltip
                   contentStyle={{ background: "#0c1322", border: "1px solid #1a2640", borderRadius: 8, color: "#f0f4ff", fontFamily: "JetBrains Mono", fontSize: 10 }}
-                  formatter={(v) => [`${v} cm`, "Depth"]}
+                  formatter={(v: number) => [`${v} cm`, "Depth"]}
                 />
                 <ReferenceLine
                   y={30}
@@ -296,15 +563,85 @@ export default function HotspotsView({
                 <Area
                   type="monotone"
                   dataKey="depth"
-                  stroke={riskColors[selected.risk]}
+                  stroke={riskColor}
                   strokeWidth={2}
                   fill="url(#hotspotGrad)"
-                  dot={{ fill: riskColors[selected.risk], r: 3 }}
+                  dot={{ fill: riskColor, r: 3 }}
+                  animationDuration={800}
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
+
+        {/* Score breakdown */}
+        <button
+          onClick={() => setShowScoreBreakdown((p) => !p)}
+          className="w-full text-left rounded-xl p-3 transition-all hover:bg-white/[0.02]"
+          style={{ background: "rgba(12,19,34,0.8)", border: "1px solid #1a2640" }}
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-mono uppercase tracking-widest" style={{ color: "#4a6080" }}>
+              Urgency Score Breakdown
+            </h3>
+            <span className="text-sm font-mono font-black" style={{ color: riskColor }}>
+              {selected.score.composite} / 100
+            </span>
+          </div>
+          {showScoreBreakdown && (
+            <div className="mt-3 space-y-2 animate-slide-up">
+              {[
+                { label: "Depth Factor (35%)", value: selected.score.depth_factor, max: 200 },
+                { label: "Velocity Factor (20%)", value: selected.score.velocity_factor, max: 200 },
+                { label: "Drainage Stress (15%)", value: selected.score.drainage_factor, max: 100 },
+                { label: "Urgency Factor (15%)", value: selected.score.urgency_factor, max: 100 },
+                { label: "Rainfall Intensity (10%)", value: selected.score.rainfall_factor, max: 100 },
+                { label: "Confidence (5%)", value: selected.score.confidence_factor, max: 100 },
+              ].map((f) => (
+                <div key={f.label}>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[10px]" style={{ color: "#8da0b8" }}>{f.label}</span>
+                    <span className="text-[10px] font-mono font-bold" style={{ color: "#f0f4ff" }}>
+                      {f.value}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full" style={{ background: "#1a2640" }}>
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${Math.min(100, (f.value / f.max) * 100)}%`,
+                        background: f.value >= f.max * 0.8 ? "#ef4444" : f.value >= f.max * 0.5 ? "#f59e0b" : "#10b981",
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </button>
+
+        {/* Nearby entities */}
+        {(selected.nearbySOS.length > 0 || selected.nearbyShelters.length > 0 || selected.nearbyDrainage.length > 0) && (
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "rgba(12,19,34,0.8)", border: "1px solid #1a2640" }}
+          >
+            <h3 className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "#4a6080" }}>
+              Nearby Intelligence (2 km)
+            </h3>
+            <div className="space-y-2">
+              {selected.nearbySOS.map((e) => (
+                <NearbyEntityBadge key={e.id} entity={e} />
+              ))}
+              {selected.nearbyShelters.map((e) => (
+                <NearbyEntityBadge key={e.id} entity={e} />
+              ))}
+              {selected.nearbyDrainage.map((e) => (
+                <NearbyEntityBadge key={e.id} entity={e} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Confidence breakdown */}
         {showConfidence && (
@@ -321,11 +658,18 @@ export default function HotspotsView({
               </button>
             </div>
             <div className="space-y-2">
-              {confidenceFactors.map((f) => (
+              {[
+                { name: "Radar freshness", pass: selected.confidencePct >= 70 },
+                { name: "DEM quality", pass: true },
+                { name: "Drainage coverage", pass: selected.drainUtilPct < 100 },
+                { name: "Model agreement", pass: selected.confidencePct >= 75 },
+                { name: "Historical validation", pass: selected.confidencePct >= 65 },
+                { name: "Forecast lead time", pass: selected.timeToFloodMin > 15 },
+              ].map((f) => (
                 <div key={f.name} className="flex items-center justify-between">
                   <span className="text-xs" style={{ color: "#8da0b8" }}>{f.name}</span>
                   <span className={f.pass ? "text-green-400" : "text-amber-400"} style={{ fontSize: 14 }}>
-                    {f.pass ? "✓" : "—"}
+                    {f.pass ? "\u2713" : "\u2014"}
                   </span>
                 </div>
               ))}
@@ -341,7 +685,7 @@ export default function HotspotsView({
               <div>
                 <div className="text-[10px]" style={{ color: "#4a6080" }}>Likely range</div>
                 <div className="text-sm font-mono font-bold text-white">
-                  {selected.peakDepthCm - 8}–{selected.peakDepthCm + 10} cm
+                  {selected.peakDepthCm - 8}&ndash;{selected.peakDepthCm + 10} cm
                 </div>
               </div>
             </div>
@@ -352,9 +696,10 @@ export default function HotspotsView({
         <div className="flex gap-2">
           <button
             onClick={() => onNavigate("map", selected.id)}
-            className="px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
+            className="px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 flex items-center gap-2"
             style={{ background: "#06b6d4" }}
           >
+            <Navigation size={14} />
             VIEW ON MAP
           </button>
           <button
@@ -368,10 +713,17 @@ export default function HotspotsView({
             REPORT ISSUE
           </button>
           <button
-            className="px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
-            style={{ border: "1px solid rgba(239,68,68,0.4)", color: "#fca5a5", background: "rgba(239,68,68,0.08)" }}
+            onClick={handleCloseRoad}
+            disabled={closingRoad}
+            className="px-4 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
+            style={{
+              border: `1px solid ${selected.is_closed ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)"}`,
+              color: selected.is_closed ? "#6ee7b7" : "#fca5a5",
+              background: selected.is_closed ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)",
+            }}
           >
-            CLOSE ROAD
+            {closingRoad && <Loader2 size={14} className="animate-spin" />}
+            {selected.is_closed ? "REOPEN ROAD" : "CLOSE ROAD"}
           </button>
         </div>
       </div>

@@ -20,6 +20,7 @@ from routers.routing import router as routing_router
 from routers.scenarios import router as scenarios_router
 from routers.replay import router as replay_router
 from routers.system import router as system_router
+from routers.hotspots import router as hotspots_router
 
 
 @asynccontextmanager
@@ -59,6 +60,7 @@ app.add_middleware(
 )
 
 # Register modular API routers
+app.include_router(hotspots_router)
 app.include_router(flood_map_router)
 app.include_router(sos_router)
 app.include_router(rescue_router)
@@ -80,6 +82,7 @@ async def root():
         "location": "Patna, Bihar (Ganges Basin)",
         "modules": [
             "Live Map & Forecasting",
+            "Hotspot Intelligence",
             "Emergency SOS & Dispatch",
             "Rescue Fleet & Teams",
             "Evacuation Shelters",

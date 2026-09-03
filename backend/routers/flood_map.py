@@ -162,41 +162,10 @@ async def toggle_road_closure(
 
 
 # ─── 3. Hotspots ─────────────────────────────────────────────────────────────
-
-
-@router.get("/api/v1/hotspots")
-async def get_hotspots(db: AsyncSession = Depends(get_db)):
-    """Return prioritized critical flood hotspots ranked by composite risk."""
-    result = await db.execute(select(Road).order_by(Road.depth_cm.desc()))
-    roads = result.scalars().all()
-
-    hotspots = []
-    for r in roads:
-        # Composite score calculation: depth * (1 + velocity) * drain_factor
-        score = (r.depth_cm / 50.0) * 50 + (r.velocity_ms / 0.8) * 30 + (r.drain_util_pct / 100.0) * 20
-        hotspots.append({
-            "id": r.id,
-            "name": r.name,
-            "risk": r.risk_level,
-            "depthCm": r.depth_cm,
-            "peakDepthCm": r.peak_depth_cm,
-            "velocityMs": r.velocity_ms,
-            "timeToFloodMin": r.time_to_flood_min,
-            "drainUtilPct": r.drain_util_pct,
-            "confidencePct": r.confidence_pct,
-            "cause": r.cause or [],
-            "urgencyScore": round(min(100.0, score), 1),
-            "is_closed": r.is_closed,
-            "lat": r.lat,
-            "lng": r.lng,
-        })
-
-    hotspots.sort(key=lambda x: x["urgencyScore"], reverse=True)
-    return {
-        "count": len(hotspots),
-        "critical_count": sum(1 for h in hotspots if h["risk"] in ["HIGH", "SEVERE"]),
-        "hotspots": hotspots,
-    }
+# NOTE: The hotspots endpoints have been moved to routers/hotspots.py
+# which provides a comprehensive multi-factor scoring engine, spatial
+# correlation, trend analysis, heatmap data, and AI action recommendations.
+# See: routers/hotspots.py → GET /api/v1/hotspots (and related endpoints)
 
 
 # ─── 4. Forecast Timeline ────────────────────────────────────────────────────

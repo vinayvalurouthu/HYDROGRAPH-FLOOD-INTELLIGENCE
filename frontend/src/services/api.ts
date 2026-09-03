@@ -68,12 +68,169 @@ export async function toggleRoadClosure(
   );
 }
 
-export async function getHotspots() {
-  return fetchJSON(`${API_BASE}/v1/hotspots`, undefined, {
-    count: mock.roads.length,
-    critical_count: mock.roads.filter((r) => r.risk === "HIGH" || r.risk === "SEVERE").length,
-    hotspots: mock.roads,
-  });
+// ─── Hotspot Intelligence Types ──────────────────────────────────────────────
+
+export interface HotspotScore {
+  composite: number;
+  depth_factor: number;
+  velocity_factor: number;
+  drainage_factor: number;
+  urgency_factor: number;
+  rainfall_factor: number;
+  confidence_factor: number;
+  risk_tier: string;
+}
+
+export interface NearbyEntity {
+  id: string;
+  name: string;
+  distance_km: number;
+  entity_type: string;
+  status: string;
+  detail: string;
+}
+
+export interface HotspotDetail {
+  id: string;
+  name: string;
+  risk: string;
+  depthCm: number;
+  peakDepthCm: number;
+  velocityMs: number;
+  durationMin: number;
+  timeToFloodMin: number;
+  confidencePct: number;
+  rainfallMmHr: number;
+  drainUtilPct: number;
+  cause: string[];
+  is_closed: boolean;
+  lat: number;
+  lng: number;
+  geojson?: string | null;
+  score: HotspotScore;
+  actionRecommendation: string;
+  actionPriority: string;
+  trend: string;
+  nearbySOS: NearbyEntity[];
+  nearbyShelters: NearbyEntity[];
+  nearbyDrainage: NearbyEntity[];
+  affectedPopulation: number;
+}
+
+export interface HotspotListResponse {
+  count: number;
+  critical_count: number;
+  severe_count: number;
+  high_count: number;
+  total_affected_population: number;
+  avg_urgency_score: number;
+  worst_hotspot_id: string | null;
+  hotspots: HotspotDetail[];
+}
+
+export interface HotspotSummary {
+  total_hotspots: number;
+  critical_hotspots: number;
+  severe_hotspots: number;
+  high_hotspots: number;
+  moderate_hotspots: number;
+  low_hotspots: number;
+  closed_roads: number;
+  avg_depth_cm: number;
+  max_depth_cm: number;
+  avg_urgency_score: number;
+  total_affected_population: number;
+  worsening_count: number;
+  stable_count: number;
+  improving_count: number;
+  risk_distribution: Record<string, number>;
+}
+
+// ─── Hotspot API Functions ───────────────────────────────────────────────────
+
+export async function getHotspots(
+  risk?: string,
+  minScore?: number,
+  limit?: number,
+): Promise<HotspotListResponse> {
+  const params = new URLSearchParams();
+  if (risk) params.set("risk", risk);
+  if (minScore !== undefined) params.set("min_score", String(minScore));
+  if (limit !== undefined) params.set("limit", String(limit));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return fetchJSON<HotspotListResponse>(
+    `${API_BASE}/v1/hotspots${qs}`,
+    undefined,
+    {
+      count: mock.roads.length,
+      critical_count: mock.roads.filter((r) => r.risk === "SEVERE").length,
+      severe_count: mock.roads.filter((r) => r.risk === "SEVERE").length,
+      high_count: mock.roads.filter((r) => r.risk === "HIGH").length,
+      total_affected_population: 0,
+      avg_urgency_score: 0,
+      worst_hotspot_id: null,
+      hotspots: mock.roads.map((r) => ({
+        ...r,
+        is_closed: r.closed,
+        score: { composite: 0, depth_factor: 0, velocity_factor: 0, drainage_factor: 0, urgency_factor: 0, rainfall_factor: 0, confidence_factor: 0, risk_tier: r.risk },
+        actionRecommendation: "",
+        actionPriority: "",
+        trend: "STABLE",
+        nearbySOS: [],
+        nearbyShelters: [],
+        nearbyDrainage: [],
+        affectedPopulation: 0,
+      })),
+    },
+  );
+}
+
+export async function getHotspotDetail(id: string): Promise<HotspotDetail | null> {
+  return fetchJSON<HotspotDetail>(
+    `${API_BASE}/v1/hotspots/${id}`,
+    undefined,
+    null as unknown as HotspotDetail,
+  );
+}
+
+export async function getHotspotSummary(): Promise<HotspotSummary> {
+  return fetchJSON<HotspotSummary>(
+    `${API_BASE}/v1/hotspots/summary`,
+    undefined,
+    {
+      total_hotspots: 0,
+      critical_hotspots: 0,
+      severe_hotspots: 0,
+      high_hotspots: 0,
+      moderate_hotspots: 0,
+      low_hotspots: 0,
+      closed_roads: 0,
+      avg_depth_cm: 0,
+      max_depth_cm: 0,
+      avg_urgency_score: 0,
+      total_affected_population: 0,
+      worsening_count: 0,
+      stable_count: 0,
+      improving_count: 0,
+      risk_distribution: {},
+    },
+  );
+}
+
+export async function closeHotspotRoad(id: string) {
+  return fetchJSON(
+    `${API_BASE}/v1/hotspots/${id}/close`,
+    { method: "POST" },
+    { id, is_closed: true, message: `Road ${id} CLOSED (local mode)`, action: "CLOSED" },
+  );
+}
+
+export async function reopenHotspotRoad(id: string) {
+  return fetchJSON(
+    `${API_BASE}/v1/hotspots/${id}/reopen`,
+    { method: "POST" },
+    { id, is_closed: false, message: `Road ${id} REOPENED (local mode)`, action: "REOPENED" },
+  );
 }
 
 export async function getForecastTimeline(): Promise<ForecastPoint[]> {
