@@ -218,6 +218,8 @@ export async function getHotspotSummary(): Promise<HotspotSummary> {
 }
 
 export async function closeHotspotRoad(id: string) {
+  const r = mock.roads.find(road => road.id === id);
+  if (r) r.closed = true;
   return fetchJSON(
     `${API_BASE}/v1/hotspots/${id}/close`,
     { method: "POST" },
@@ -226,6 +228,8 @@ export async function closeHotspotRoad(id: string) {
 }
 
 export async function reopenHotspotRoad(id: string) {
+  const r = mock.roads.find(road => road.id === id);
+  if (r) r.closed = false;
   return fetchJSON(
     `${API_BASE}/v1/hotspots/${id}/reopen`,
     { method: "POST" },

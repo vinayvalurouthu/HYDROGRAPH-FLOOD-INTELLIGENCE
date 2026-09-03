@@ -292,8 +292,32 @@ export default function HotspotsView({
   const handleCloseRoad = async () => {
     if (!selected) return;
     setClosingRoad(true);
+
+    const newClosedStatus = !selected.is_closed;
+
+    // Optimistic UI updates
+    setSelected(prev => prev ? { ...prev, is_closed: newClosedStatus } : null);
+    setData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        hotspots: prev.hotspots.map(h => h.id === selected.id ? { ...h, is_closed: newClosedStatus } : h)
+      };
+    });
+    
+    // Update local dataset if present so subsequent fetches use new state
+    if (cityDataset) {
+      const road = cityDataset.roads.find(r => r.id === selected.id);
+      if (road) road.closed = newClosedStatus;
+    }
+
+    // Auto-navigate to map to view the newly blocked road
+    if (newClosedStatus) {
+      onNavigate("map", selected.id);
+    }
+
     try {
-      if (selected.is_closed) {
+      if (!newClosedStatus) {
         await reopenHotspotRoad(selected.id);
       } else {
         await closeHotspotRoad(selected.id);
@@ -301,6 +325,19 @@ export default function HotspotsView({
       await fetchData(true);
     } catch (err) {
       console.error("[HotspotsView] Road closure failed:", err);
+      // Revert optimistic updates
+      setSelected(prev => prev ? { ...prev, is_closed: !newClosedStatus } : null);
+      setData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          hotspots: prev.hotspots.map(h => h.id === selected.id ? { ...h, is_closed: !newClosedStatus } : h)
+        };
+      });
+      if (cityDataset) {
+        const road = cityDataset.roads.find(r => r.id === selected.id);
+        if (road) road.closed = !newClosedStatus;
+      }
     } finally {
       setClosingRoad(false);
     }

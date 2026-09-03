@@ -329,9 +329,25 @@ export default function FloodMapView({
           const coords = geojson.coordinates;
           if (coords && coords.length > 0) {
             const mid = coords[Math.floor(coords.length / 2)];
-            const labelIcon = L.divIcon({
-              className: "road-label-icon",
-              html: `<div style="
+            let labelHtml = "";
+            if (road.closed) {
+              labelHtml = `<div style="
+                background: rgba(239, 68, 68, 0.2);
+                border: 1px solid rgba(239, 68, 68, 0.8);
+                color: #fca5a5;
+                font-size: 11px;
+                font-weight: 900;
+                font-family: 'JetBrains Mono', monospace;
+                padding: 4px 8px;
+                border-radius: 4px;
+                white-space: nowrap;
+                backdrop-filter: blur(8px);
+                text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+                letter-spacing: 0.5px;
+                box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+              ">🚧 ROAD BLOCKED</div>`;
+            } else {
+              labelHtml = `<div style="
                 background: ${color}22;
                 border: 1px solid ${color}88;
                 color: ${color};
@@ -344,7 +360,12 @@ export default function FloodMapView({
                 backdrop-filter: blur(8px);
                 text-shadow: 0 1px 3px rgba(0,0,0,0.8);
                 letter-spacing: 0.5px;
-              ">${road.id} · ${road.depthCm}cm${road.closed ? " · CLOSED" : ""}</div>`,
+              ">${road.id} · ${road.depthCm}cm</div>`;
+            }
+
+            const labelIcon = L.divIcon({
+              className: "road-label-icon",
+              html: labelHtml,
               iconSize: [0, 0],
               iconAnchor: [0, 0],
             });
