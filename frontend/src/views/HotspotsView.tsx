@@ -36,6 +36,7 @@ import type {
   NearbyEntity,
 } from "../services/api";
 import type { ForecastPoint } from "../mockData";
+import type { CityFloodDataset } from "../services/cityDataGenerator";
 
 const riskColors: Record<string, string> = {
   CRITICAL: "#dc2626",
@@ -153,8 +154,10 @@ const AUTO_REFRESH_MS = 30000; // 30s auto-refresh
 
 export default function HotspotsView({
   onNavigate,
+  cityDataset,
 }: {
   onNavigate: (view: string, roadId?: string) => void;
+  cityDataset: CityFloodDataset | null;
 }) {
   const [data, setData] = useState<HotspotListResponse | null>(null);
   const [summary, setSummary] = useState<HotspotSummary | null>(null);
@@ -171,22 +174,105 @@ export default function HotspotsView({
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      const [hotspotsRes, summaryRes, forecastRes] = await Promise.all([
-        getHotspots(),
-        getHotspotSummary(),
-        getForecastTimeline(),
-      ]);
-      setData(hotspotsRes);
-      setSummary(summaryRes);
-      setForecast(forecastRes);
-      setLastUpdated(new Date());
-      // Select first hotspot if none selected or if current selection was removed
-      if (hotspotsRes.hotspots.length > 0) {
-        setSelected((prev) => {
-          if (!prev) return hotspotsRes.hotspots[0];
-          const found = hotspotsRes.hotspots.find((h) => h.id === prev.id);
-          return found || hotspotsRes.hotspots[0];
+      if (cityDataset) {
+        // Compute hotspots locally based on the generated dataset
+        const computedHotspots = cityDataset.roads.map((r) => ({
+          ...r,
+          is_closed: r.closed || false,
+          score: {
+            composite: 0,
+            depth_factor: 0,
+            velocity_factor: 0,
+            drainage_factor: 0,
+            urgency_factor: 0,
+            rainfall_factor: 0,
+            confidence_factor: 0,
+            risk_tier: r.risk,
+          },
+          actionRecommendation: r.risk === "SEVERE" ? "CLOSE IMMEDIATELY" : r.risk === "HIGH" ? "MONITOR" : "OBSERVE",
+          actionPriority: r.risk === "SEVERE" ? "CRITICAL" : "MODERATE",
+          trend: "STABLE",
+          nearbySOS: [],
+          nearbyShelters: [],
+          nearbyDrainage: [],
+          affectedPopulation: 0,
+        }));
+        
+        computedHotspots.sort((a, b) => {
+          const riskWeight: Record<string, number> = { SEVERE: 4, HIGH: 3, MODERATE: 2, LOW: 1 };
+          return (riskWeight[b.risk] || 0) - (riskWeight[a.risk] || 0) || b.depthCm - a.depthCm;
         });
+
+        const criticalCount = computedHotspots.filter((h) => h.risk === "SEVERE").length;
+        const severeCount = computedHotspots.filter((h) => h.risk === "SEVERE").length;
+        const highCount = computedHotspots.filter((h) => h.risk === "HIGH").length;
+        const moderateCount = computedHotspots.filter((h) => h.risk === "MODERATE").length;
+        const lowCount = computedHotspots.filter((h) => h.risk === "LOW").length;
+
+        const resData: HotspotListResponse = {
+          count: computedHotspots.length,
+          critical_count: criticalCount,
+          severe_count: severeCount,
+          high_count: highCount,
+          total_affected_population: 0,
+          avg_urgency_score: 0,
+          worst_hotspot_id: computedHotspots.length > 0 ? computedHotspots[0].id : null,
+          hotspots: computedHotspots,
+        };
+
+        const resSummary: HotspotSummary = {
+          total_hotspots: computedHotspots.length,
+          critical_hotspots: criticalCount,
+          severe_hotspots: severeCount,
+          high_hotspots: highCount,
+          moderate_hotspots: moderateCount,
+          low_hotspots: lowCount,
+          closed_roads: computedHotspots.filter((h) => h.is_closed).length,
+          avg_depth_cm: computedHotspots.length ? computedHotspots.reduce((sum, h) => sum + h.depthCm, 0) / computedHotspots.length : 0,
+          max_depth_cm: computedHotspots.length ? Math.max(...computedHotspots.map(h => h.depthCm)) : 0,
+          avg_urgency_score: 0,
+          total_affected_population: 0,
+          worsening_count: 0,
+          stable_count: computedHotspots.length,
+          improving_count: 0,
+          risk_distribution: {
+            SEVERE: severeCount,
+            HIGH: highCount,
+            MODERATE: moderateCount,
+            LOW: lowCount,
+          },
+        };
+
+        setData(resData);
+        setSummary(resSummary);
+        setForecast(cityDataset.forecast || []);
+        setLastUpdated(new Date());
+
+        if (resData.hotspots.length > 0) {
+          setSelected((prev) => {
+            if (!prev) return resData.hotspots[0];
+            const found = resData.hotspots.find((h) => h.id === prev.id);
+            return found || resData.hotspots[0];
+          });
+        }
+      } else {
+        const [hotspotsRes, summaryRes, forecastRes] = await Promise.all([
+          getHotspots(),
+          getHotspotSummary(),
+          getForecastTimeline(),
+        ]);
+        setData(hotspotsRes);
+        setSummary(summaryRes);
+        setForecast(forecastRes);
+        setLastUpdated(new Date());
+        
+        if (hotspotsRes.hotspots.length > 0) {
+          setSelected((prev) => {
+            if (!prev) return hotspotsRes.hotspots[0];
+            const found = hotspotsRes.hotspots.find((h) => h.id === prev.id);
+            return found || hotspotsRes.hotspots[0];
+          });
+        }
       }
     } catch (err) {
       console.error("[HotspotsView] Failed to fetch data:", err);
@@ -194,7 +280,7 @@ export default function HotspotsView({
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [cityDataset]);
 
   // Initial fetch + auto-refresh every 30s
   useEffect(() => {
@@ -339,7 +425,7 @@ export default function HotspotsView({
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-white">{hotspot.id}</span>
+                      <span className="text-xs font-bold text-white truncate max-w-[140px]" title={hotspot.name}>{hotspot.name}</span>
                       {hotspot.is_closed && (
                         <span
                           className="text-[9px] font-mono px-1.5 rounded"
@@ -353,8 +439,8 @@ export default function HotspotsView({
                         style={{ color: trendColors[hotspot.trend] || "#4a6080" }}
                       />
                     </div>
-                    <div className="text-[10px] mt-0.5 truncate" style={{ color: "#4a6080" }}>
-                      {hotspot.name}
+                    <div className="text-[10px] mt-0.5 font-mono truncate" style={{ color: "#4a6080" }}>
+                      {hotspot.id}
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -413,8 +499,8 @@ export default function HotspotsView({
         >
           <div className="flex items-start justify-between">
             <div>
-              <div className="flex items-center gap-3 mb-1">
-                <h2 className="text-2xl font-mono font-black text-white">{selected.id}</h2>
+              <div className="flex items-center gap-3 mb-1 flex-wrap">
+                <h2 className="text-xl font-bold text-white">{selected.name}</h2>
                 <span
                   className="text-sm font-mono font-bold px-3 py-1 rounded-full"
                   style={{ background: riskColor, color: "white" }}
@@ -433,8 +519,8 @@ export default function HotspotsView({
                   </span>
                 </div>
               </div>
-              <p className="text-sm" style={{ color: "#8da0b8" }}>
-                {selected.name}
+              <p className="text-xs font-mono" style={{ color: "#8da0b8" }}>
+                {selected.id}
               </p>
               {/* Priority badge */}
               <div className="flex items-center gap-2 mt-1">

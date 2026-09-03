@@ -46,6 +46,7 @@ interface Props {
   onTimelineChange: (idx: number) => void;
   onCloseRoad: (roadId: string) => void;
   onCityChange?: (city: CityPreset) => void;
+  onCityDatasetChange?: (dataset: CityFloodDataset) => void;
 }
 
 const PATNA_CENTER: [number, number] = [25.6093, 85.1376];
@@ -88,6 +89,7 @@ export default function FloodMapView({
   onTimelineChange,
   onCloseRoad,
   onCityChange,
+  onCityDatasetChange,
 }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -132,6 +134,7 @@ export default function FloodMapView({
   const applyCityDataset = useCallback((dataset: CityFloodDataset) => {
     setCurrentCity(dataset.city);
     onCityChange?.(dataset.city);
+    onCityDatasetChange?.(dataset);
     setLocationInput(`${dataset.city.name}, ${dataset.city.state}`);
     setMapCenter(dataset.city.center);
     setDataSource(dataset.source);

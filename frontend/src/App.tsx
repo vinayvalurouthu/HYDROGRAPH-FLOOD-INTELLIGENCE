@@ -22,8 +22,8 @@ import {
 } from "lucide-react";
 import { alerts, roads, kpiData } from "./mockData";
 import type { Alert } from "./mockData";
-import { PRESET_CITIES } from "./services/cityDataGenerator";
-import type { CityPreset } from "./services/cityDataGenerator";
+import { PRESET_CITIES, generatePresetCityData } from "./services/cityDataGenerator";
+import type { CityPreset, CityFloodDataset } from "./services/cityDataGenerator";
 
 // Views
 import OverviewView from "./views/OverviewView";
@@ -288,6 +288,7 @@ function RightPanel({
 export default function App() {
   const [activeView, setActiveView] = useState("overview");
   const [activeCity, setActiveCity] = useState<CityPreset>(PRESET_CITIES[0]);
+  const [cityDataset, setCityDataset] = useState<CityFloodDataset | null>(null);
   const [selectedRoad, setSelectedRoad] = useState<string | null>(null);
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [showAlerts, setShowAlerts] = useState(false);
@@ -296,6 +297,8 @@ export default function App() {
   const [closedRoads, setClosedRoads] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    const initialDataset = generatePresetCityData(PRESET_CITIES[0]);
+    setCityDataset(initialDataset);
     const t = setInterval(() => setLiveTime(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -539,10 +542,11 @@ export default function App() {
                 onTimelineChange={setTimelineIndex}
                 onCloseRoad={(id) => setClosedRoads((p) => new Set(p).add(id))}
                 onCityChange={setActiveCity}
+                onCityDatasetChange={setCityDataset}
               />
             )}
             {activeView === "hotspots" && (
-              <HotspotsView onNavigate={handleNavigate} />
+              <HotspotsView onNavigate={handleNavigate} cityDataset={cityDataset} />
             )}
             {activeView === "drainage" && <DrainageView />}
             {activeView === "routing" && <RoutingView />}
