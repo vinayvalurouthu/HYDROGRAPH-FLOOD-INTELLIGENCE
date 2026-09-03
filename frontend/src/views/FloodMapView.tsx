@@ -18,6 +18,11 @@ import {
   Crosshair,
   Shield,
   Zap,
+  Globe,
+  Sparkles,
+  ChevronDown,
+  Check,
+  Loader2,
 } from "lucide-react";
 import {
   roads as mockRoads,
@@ -27,6 +32,12 @@ import {
   shelters as mockShelters,
 } from "../mockData";
 import type { Road, ForecastPoint } from "../mockData";
+import {
+  PRESET_CITIES,
+  generatePresetCityData,
+  fetchOsmCityData,
+} from "../services/cityDataGenerator";
+import type { CityPreset, CityFloodDataset } from "../services/cityDataGenerator";
 
 interface Props {
   selectedRoadId?: string;
@@ -34,6 +45,7 @@ interface Props {
   timelineIndex: number;
   onTimelineChange: (idx: number) => void;
   onCloseRoad: (roadId: string) => void;
+  onCityChange?: (city: CityPreset) => void;
 }
 
 const PATNA_CENTER: [number, number] = [25.6093, 85.1376];
@@ -75,6 +87,7 @@ export default function FloodMapView({
   timelineIndex,
   onTimelineChange,
   onCloseRoad,
+  onCityChange,
 }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -98,7 +111,16 @@ export default function FloodMapView({
   const [searchResults, setSearchResults] = useState<Road[]>([]);
   const [mapReady, setMapReady] = useState(false);
 
-  // Data from API (with mock fallbacks)
+  // Dynamic City Intelligence State
+  const [currentCity, setCurrentCity] = useState<CityPreset>(PRESET_CITIES[0]);
+  const [locationInput, setLocationInput] = useState("Patna, Bihar");
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [searchStatusMsg, setSearchStatusMsg] = useState("");
+  const [dataSource, setDataSource] = useState<"PRESET" | "OSM_LIVE" | "SIMULATION">("PRESET");
+  const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(PATNA_CENTER);
+
+  // Data layers
   const [roads, setRoads] = useState<Road[]>(mockRoads);
   const [forecast, setForecast] = useState<ForecastPoint[]>(mockForecast);
   const [floodZones, setFloodZones] = useState<any[]>([]);
@@ -106,8 +128,93 @@ export default function FloodMapView({
   const [shelters, setShelters] = useState(mockShelters);
   const [drainageNodes, setDrainageNodes] = useState(mockDrainageNodes);
 
-  // Load data from backend
+  // Apply complete city dataset
+  const applyCityDataset = useCallback((dataset: CityFloodDataset) => {
+    setCurrentCity(dataset.city);
+    onCityChange?.(dataset.city);
+    setLocationInput(`${dataset.city.name}, ${dataset.city.state}`);
+    setMapCenter(dataset.city.center);
+    setDataSource(dataset.source);
+    setRoads(dataset.roads);
+    setFloodZones(dataset.floodZones);
+    setSosIncidents(dataset.sosIncidents);
+    setShelters(dataset.shelters);
+    setDrainageNodes(dataset.drainageNodes);
+    setForecast(dataset.forecast);
+    mapRef.current?.flyTo(dataset.city.center, dataset.city.zoom || DEFAULT_ZOOM, { duration: 0.8 });
+  }, [onCityChange]);
+
+  // Preset selector
+  const selectPresetCity = useCallback((cityId: string) => {
+    const preset = PRESET_CITIES.find((c) => c.id === cityId);
+    if (!preset) return;
+    const dataset = generatePresetCityData(preset);
+    applyCityDataset(dataset);
+    setCityDropdownOpen(false);
+  }, [applyCityDataset]);
+
+  // Search any location worldwide via Geocoding + Overpass + Simulation Fallback
+  const searchLocation = async (query: string) => {
+    const q = query.trim();
+    if (!q) return;
+
+    setIsSearchingLocation(true);
+    setSearchStatusMsg("Geocoding coordinates...");
+
+    try {
+      // Check preset match first
+      const matched = PRESET_CITIES.find(
+        (p) =>
+          p.name.toLowerCase().includes(q.toLowerCase()) ||
+          p.id.toLowerCase().includes(q.toLowerCase())
+      );
+      if (matched) {
+        const dataset = generatePresetCityData(matched);
+        applyCityDataset(dataset);
+        setIsSearchingLocation(false);
+        setSearchStatusMsg("");
+        return;
+      }
+
+      // Geocode via OpenStreetMap Nominatim
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`
+      );
+      const data = await res.json();
+      if (!data || data.length === 0) {
+        alert(`Location "${q}" not found on OpenStreetMap. Please try another place.`);
+        setIsSearchingLocation(false);
+        setSearchStatusMsg("");
+        return;
+      }
+
+      const first = data[0];
+      const lat = parseFloat(first.lat);
+      const lon = parseFloat(first.lon);
+      const parts = first.display_name.split(",");
+      const cityName = parts[0].trim();
+      const stateName = parts.length > 2 ? parts[parts.length - 3]?.trim() || "District" : "Region";
+
+      setSearchStatusMsg("Extracting OSM roads & generating flood layers...");
+      const dataset = await fetchOsmCityData(lat, lon, cityName, stateName);
+      applyCityDataset(dataset);
+    } catch (err) {
+      console.error("Geocoding / Overpass search error", err);
+    } finally {
+      setIsSearchingLocation(false);
+      setSearchStatusMsg("");
+    }
+  };
+
+  const handleLocationKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      searchLocation(locationInput);
+    }
+  };
+
+  // Load backend data for default Patna
   useEffect(() => {
+    if (currentCity.id !== "patna") return;
     async function loadData() {
       try {
         const [roadsRes, forecastRes, zonesRes, sosRes, sheltersRes, drainRes] = await Promise.allSettled([
@@ -125,11 +232,11 @@ export default function FloodMapView({
         if (sheltersRes.status === "fulfilled") setShelters(sheltersRes.value);
         if (drainRes.status === "fulfilled" && drainRes.value.nodes) setDrainageNodes(drainRes.value.nodes);
       } catch {
-        // Mock data already loaded
+        // Fallback already in place
       }
     }
     loadData();
-  }, [timelineIndex]);
+  }, [currentCity.id, timelineIndex]);
 
   // Initialize Leaflet map
   useEffect(() => {
@@ -585,18 +692,168 @@ export default function FloodMapView({
         </div>
       )}
 
-      {/* Live Status Chips — top left */}
-      <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2">
+      {/* Dynamic City Intelligence & Control Panel — top left */}
+      <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2 max-w-sm">
+        {/* Main Location & City Bar */}
         <div
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-          style={{ background: "rgba(5,10,20,0.85)", border: "1px solid #1a2640", backdropFilter: "blur(8px)" }}
+          className="flex flex-col gap-1.5 p-2 rounded-xl"
+          style={{
+            background: "rgba(5,10,20,0.92)",
+            border: "1px solid #1a2640",
+            backdropFilter: "blur(12px)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+          }}
         >
-          <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "#10b981" }} />
-          <span className="text-[10px] font-mono font-bold text-emerald-400">LIVE</span>
-          <span className="text-[10px] font-mono" style={{ color: "#4a6080" }}>
-            Patna, Bihar
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0" style={{ background: "#10b981" }} />
+            
+            {/* City Preset Dropdown Trigger */}
+            <div className="relative">
+              <button
+                onClick={() => setCityDropdownOpen(!cityDropdownOpen)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold hover:bg-white/10 transition-colors"
+                style={{
+                  background: "rgba(6,182,212,0.12)",
+                  color: "#22d3ee",
+                  border: "1px solid rgba(6,182,212,0.3)",
+                }}
+                title="Select from pre-configured disaster intelligence pilot zones"
+              >
+                <Globe size={11} />
+                <span>{currentCity.name}</span>
+                <ChevronDown size={10} />
+              </button>
+
+              {/* City Presets Dropdown Menu */}
+              {cityDropdownOpen && (
+                <div
+                  className="absolute top-full left-0 mt-1.5 w-60 rounded-xl p-1.5 shadow-2xl z-50 animate-slide-down"
+                  style={{
+                    background: "rgba(8,13,28,0.98)",
+                    border: "1px solid #22d3ee40",
+                    backdropFilter: "blur(16px)",
+                  }}
+                >
+                  <div className="px-2 py-1 text-[9px] font-mono font-bold uppercase tracking-wider" style={{ color: "#4a6080" }}>
+                    Pre-Configured Pilot Zones
+                  </div>
+                  <div className="space-y-0.5">
+                    {PRESET_CITIES.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => selectPresetCity(c.id)}
+                        className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-white/10 transition-colors"
+                        style={{
+                          background: currentCity.id === c.id ? "rgba(6,182,212,0.15)" : "transparent",
+                        }}
+                      >
+                        <div>
+                          <div className="text-[11px] font-mono font-bold text-white flex items-center gap-1.5">
+                            {c.name}
+                            {c.id === "vizag" && (
+                              <span className="text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-normal">
+                                COASTAL
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[9px] font-mono" style={{ color: "#4a6080" }}>
+                            {c.state} · {c.regionType}
+                          </div>
+                        </div>
+                        {currentCity.id === c.id && <Check size={12} style={{ color: "#22d3ee" }} />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Custom Location Search Input */}
+            <div className="flex-1 flex items-center gap-1 bg-black/40 px-2 py-1 rounded-lg border border-[#1a2640] focus-within:border-[#22d3ee]">
+              <Search size={10} style={{ color: "#4a6080" }} />
+              <input
+                type="text"
+                className="bg-transparent text-[10px] font-mono outline-none w-full text-slate-200 placeholder:text-slate-600"
+                placeholder="Search any city (e.g. Vizag, Mumbai)..."
+                value={locationInput}
+                onChange={(e) => setLocationInput(e.target.value)}
+                onKeyDown={handleLocationKeyDown}
+                disabled={isSearchingLocation}
+              />
+              {isSearchingLocation ? (
+                <Loader2 size={11} className="animate-spin text-cyan-400" />
+              ) : (
+                <button
+                  onClick={() => searchLocation(locationInput)}
+                  className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition-colors"
+                >
+                  GO
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Search Status Progress Message */}
+          {isSearchingLocation && (
+            <div className="flex items-center gap-1.5 text-[9px] font-mono text-cyan-400 animate-pulse px-1">
+              <Loader2 size={10} className="animate-spin" />
+              <span>{searchStatusMsg || "Searching location..."}</span>
+            </div>
+          )}
+
+          {/* Quick Pilot City Pills */}
+          <div className="flex items-center gap-1 overflow-x-auto py-0.5 scrollbar-none">
+            {PRESET_CITIES.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => selectPresetCity(c.id)}
+                className="text-[8px] font-mono px-2 py-0.5 rounded-md whitespace-nowrap transition-all"
+                style={{
+                  background: currentCity.id === c.id ? "rgba(6,182,212,0.25)" : "rgba(255,255,255,0.04)",
+                  color: currentCity.id === c.id ? "#22d3ee" : "#8da0b8",
+                  border: currentCity.id === c.id ? "1px solid rgba(6,182,212,0.5)" : "1px solid #1a2640",
+                }}
+              >
+                {c.name.split(" ")[0]}
+              </button>
+            ))}
+          </div>
+
+          {/* Source Indicator & Waterbody info */}
+          <div className="flex items-center justify-between pt-1 border-t border-[#1a2640]/60 text-[8px] font-mono">
+            <span style={{ color: "#4a6080" }}>
+              Waterbody: <span className="text-slate-300">{currentCity.waterBody}</span>
+            </span>
+            <span
+              className="px-1.5 py-0.5 rounded font-bold"
+              style={{
+                background:
+                  dataSource === "OSM_LIVE"
+                    ? "rgba(16,185,129,0.15)"
+                    : dataSource === "PRESET"
+                    ? "rgba(6,182,212,0.15)"
+                    : "rgba(245,158,11,0.15)",
+                color:
+                  dataSource === "OSM_LIVE"
+                    ? "#34d399"
+                    : dataSource === "PRESET"
+                    ? "#22d3ee"
+                    : "#fbbf24",
+                border: `1px solid ${
+                  dataSource === "OSM_LIVE"
+                    ? "rgba(16,185,129,0.3)"
+                    : dataSource === "PRESET"
+                    ? "rgba(6,182,212,0.3)"
+                    : "rgba(245,158,11,0.3)"
+                }`,
+              }}
+            >
+              {dataSource === "OSM_LIVE" ? "⚡ OSM LIVE" : dataSource === "PRESET" ? "🏢 PRESET DATASET" : "🌊 MULTI-ZONE SIM"}
+            </span>
+          </div>
         </div>
+
+        {/* Hazard & Distress Badges */}
         <div className="flex gap-1.5">
           <div
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
@@ -605,7 +862,7 @@ export default function FloodMapView({
             <AlertTriangle size={10} style={{ color: "#ef4444" }} />
             <span className="text-[10px] font-mono font-bold text-red-400">{criticalCount}</span>
             <span className="text-[9px] font-mono" style={{ color: "#ef444488" }}>
-              CRITICAL
+              CRITICAL ROADS
             </span>
           </div>
           <div
@@ -615,7 +872,17 @@ export default function FloodMapView({
             <Zap size={10} style={{ color: "#eab308" }} />
             <span className="text-[10px] font-mono font-bold text-yellow-400">{activeSOSCount}</span>
             <span className="text-[9px] font-mono" style={{ color: "#eab30888" }}>
-              SOS
+              SOS BEACONS
+            </span>
+          </div>
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+            style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.3)" }}
+          >
+            <Building2 size={10} style={{ color: "#10b981" }} />
+            <span className="text-[10px] font-mono font-bold text-emerald-400">{shelters.length}</span>
+            <span className="text-[9px] font-mono" style={{ color: "#10b98188" }}>
+              SHELTERS
             </span>
           </div>
         </div>
@@ -719,9 +986,9 @@ export default function FloodMapView({
           </div>
         )}
 
-        {/* Center on Patna */}
+        {/* Center on Location */}
         <button
-          onClick={() => mapRef.current?.flyTo(PATNA_CENTER, DEFAULT_ZOOM, { duration: 0.6 })}
+          onClick={() => mapRef.current?.flyTo(mapCenter, DEFAULT_ZOOM, { duration: 0.6 })}
           className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors"
           style={{ background: "rgba(5,10,20,0.9)", border: "1px solid #1a2640" }}
         >

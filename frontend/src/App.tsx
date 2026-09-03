@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { alerts, roads, kpiData } from "./mockData";
 import type { Alert } from "./mockData";
+import { PRESET_CITIES } from "./services/cityDataGenerator";
+import type { CityPreset } from "./services/cityDataGenerator";
 
 // Views
 import OverviewView from "./views/OverviewView";
@@ -285,6 +287,7 @@ function RightPanel({
 
 export default function App() {
   const [activeView, setActiveView] = useState("overview");
+  const [activeCity, setActiveCity] = useState<CityPreset>(PRESET_CITIES[0]);
   const [selectedRoad, setSelectedRoad] = useState<string | null>(null);
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [showAlerts, setShowAlerts] = useState(false);
@@ -353,8 +356,8 @@ export default function App() {
         {/* Location + status */}
         <div className="flex items-center gap-3 flex-shrink-0">
           <div>
-            <div className="text-xs font-mono font-bold text-white">PILOT ZONE</div>
-            <div className="text-[9px] font-mono" style={{ color: "#4a6080" }}>COASTAL DISTRICT</div>
+            <div className="text-xs font-mono font-bold text-white tracking-wide">{activeCity.name.toUpperCase()}</div>
+            <div className="text-[9px] font-mono" style={{ color: "#4a6080" }}>{activeCity.state.toUpperCase()} · {activeCity.regionType.toUpperCase()}</div>
           </div>
           <div
             className="flex items-center gap-1.5 px-2 py-1 rounded-full"
@@ -535,6 +538,7 @@ export default function App() {
                 timelineIndex={timelineIndex}
                 onTimelineChange={setTimelineIndex}
                 onCloseRoad={(id) => setClosedRoads((p) => new Set(p).add(id))}
+                onCityChange={setActiveCity}
               />
             )}
             {activeView === "hotspots" && (
