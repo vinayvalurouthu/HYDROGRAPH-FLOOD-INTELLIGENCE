@@ -572,7 +572,9 @@ export default function App() {
             {activeView === "drainage" && (
               <DrainageView cityDataset={cityDataset} activeCity={activeCity} />
             )}
-            {activeView === "routing" && <RoutingView />}
+            {activeView === "routing" && (
+              <RoutingView activeCity={activeCity} cityDataset={cityDataset} />
+            )}
             {activeView === "shelters" && <SheltersView />}
             {activeView === "sos" && (
               <SOSView
