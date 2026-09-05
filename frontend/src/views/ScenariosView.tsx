@@ -11,7 +11,7 @@ import {
   Legend,
 } from "recharts";
 import { Play, RotateCcw, Save, TrendingUp, TrendingDown, CheckCircle } from "lucide-react";
-import { runScenario, baselineScenario, historicalEvents } from "../mockData";
+import { baselineScenario, historicalEvents } from "../mockData";
 import type { ScenarioResult } from "../mockData";
 import type { CityPreset, CityFloodDataset } from "../services/cityDataGenerator";
 
@@ -51,11 +51,11 @@ export default function ScenariosView({ activeCity, cityDataset }: Props) {
       zoomControl: false,
     });
 
+    const maptilerKey = import.meta.env.VITE_MAPTILER_API_KEY;
     L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=${maptilerKey}`,
       {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
+        attribution: '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 20,
       }
     ).addTo(map);
@@ -124,9 +124,25 @@ export default function ScenariosView({ activeCity, cityDataset }: Props) {
 
   const handleRun = async () => {
     setRunning(true);
-    await new Promise((r) => setTimeout(r, 1400));
-    setResult(runScenario(rainfall, drainage, riverLevel));
-    setRunning(false);
+    try {
+      const response = await fetch("http://localhost:8000/api/v1/scenario/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rainfall_pct: rainfall,
+          drainage_pct: drainage,
+          river_level: riverLevel,
+          sluice_gate_open_pct: 100,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to run scenario");
+      const data = await response.json();
+      setResult(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setRunning(false);
+    }
   };
 
   const handleReset = () => {

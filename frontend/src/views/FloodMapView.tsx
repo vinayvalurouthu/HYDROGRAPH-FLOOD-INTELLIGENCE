@@ -256,11 +256,11 @@ export default function FloodMapView({
       attributionControl: false,
     });
 
+    const maptilerKey = import.meta.env.VITE_MAPTILER_API_KEY;
     L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=${maptilerKey}`,
       {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
+        attribution: '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 20,
       }
     ).addTo(map);
@@ -687,9 +687,7 @@ export default function FloodMapView({
         }
         .hydro-tooltip::before { display: none !important; }
         .leaflet-container { background: #060a12 !important; }
-        .leaflet-tile-pane {
-          filter: invert(1) hue-rotate(180deg) brightness(0.7) contrast(1.3) saturate(0.4);
-        }
+
         .leaflet-control-attribution { 
           background: rgba(5,10,20,0.8) !important;
           color: #4a6080 !important;

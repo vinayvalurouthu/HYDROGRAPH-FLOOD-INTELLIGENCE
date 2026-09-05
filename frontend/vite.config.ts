@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: '/',
+    envDir: '../',
     build: {
       sourcemap: emitSourcemaps ? 'inline' : false,
       minify: !emitSourcemaps,
