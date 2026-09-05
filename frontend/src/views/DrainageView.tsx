@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { drainageNodes } from "../mockData";
 import type { DrainageNode } from "../mockData";
-import { AlertTriangle, CheckCircle, MapPin, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle, MapPin, Wrench, Loader2 } from "lucide-react";
+import { getDrainageStatus, requestFieldInspection } from "../services/api";
 
 function UtilizationBar({ pct, status }: { pct: number; status: DrainageNode["status"] }) {
   const color =
@@ -29,12 +30,30 @@ const statusConfig = {
 };
 
 export default function DrainageView() {
+  const [nodes, setNodes] = useState<DrainageNode[]>(drainageNodes);
   const [selected, setSelected] = useState<DrainageNode>(drainageNodes[0]);
   const [inspectionSent, setInspectionSent] = useState<Set<string>>(new Set());
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
-  const handleInspection = (id: string) => {
-    setInspectionSent((p) => new Set(p).add(id));
+  useEffect(() => {
+    getDrainageStatus().then((res) => {
+      if (res && res.nodes && res.nodes.length > 0) {
+        setNodes(res.nodes);
+        setSelected(res.nodes[0]);
+      }
+    });
+  }, []);
+
+  const handleInspection = async (id: string) => {
+    setLoadingId(id);
+    try {
+      await requestFieldInspection(id);
+      setInspectionSent((p) => new Set(p).add(id));
+    } finally {
+      setLoadingId(null);
+    }
   };
+
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -53,7 +72,7 @@ export default function DrainageView() {
                   style={{ background: statusConfig[s].color }}
                 />
                 <span className="text-[10px] font-mono" style={{ color: "#4a6080" }}>
-                  {drainageNodes.filter((n) => n.status === s).length} {s}
+                  {nodes.filter((n) => n.status === s).length} {s}
                 </span>
               </div>
             ))}
@@ -61,7 +80,7 @@ export default function DrainageView() {
         </div>
 
         <div className="p-3 space-y-2">
-          {drainageNodes.map((node) => {
+          {nodes.map((node) => {
             const cfg = statusConfig[node.status];
             const isSelected = selected.id === node.id;
             return (
@@ -243,17 +262,22 @@ export default function DrainageView() {
                 >
                   <CheckCircle size={14} className="text-green-400" />
                   <span className="text-xs font-mono text-green-300">
-                    Inspection request sent
+                    Inspection request sent to dispatch
                   </span>
                 </div>
               ) : (
                 <button
+                  disabled={loadingId === selected.id}
                   onClick={() => handleInspection(selected.id)}
-                  className="w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 transition-all hover:opacity-90"
+                  className="w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50"
                   style={{ background: "#06b6d4" }}
                 >
-                  <Wrench size={14} />
-                  REQUEST FIELD INSPECTION
+                  {loadingId === selected.id ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Wrench size={14} />
+                  )}
+                  {loadingId === selected.id ? "DISPATCHING..." : "REQUEST FIELD INSPECTION"}
                 </button>
               )}
             </div>
@@ -277,7 +301,7 @@ export default function DrainageView() {
               <line x1="120" y1="90" x2="300" y2="140" stroke="#1a2640" strokeWidth="2" strokeDasharray="4 4" />
               <line x1="300" y1="140" x2="480" y2="70" stroke="#1a2640" strokeWidth="2" strokeDasharray="4 4" />
 
-              {drainageNodes.map((node, i) => {
+              {nodes.map((node, i) => {
                 const positions = [
                   { x: 350, y: 90 },
                   { x: 250, y: 60 },

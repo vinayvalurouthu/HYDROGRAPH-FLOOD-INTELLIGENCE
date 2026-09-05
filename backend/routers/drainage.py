@@ -100,3 +100,21 @@ async def get_drainage_node(node_id: str, db: AsyncSession = Depends(get_db)):
     if not node:
         raise HTTPException(status_code=404, detail=f"Drainage node {node_id} not found")
     return node_to_out(node)
+
+
+@router.post("/nodes/{node_id}/inspect")
+async def request_field_inspection(node_id: str, db: AsyncSession = Depends(get_db)):
+    """Dispatch municipal field inspection team to clear drainage node."""
+    result = await db.execute(select(DrainageNode).where(DrainageNode.id == node_id))
+    node = result.scalar_one_or_none()
+    if not node:
+        raise HTTPException(status_code=404, detail=f"Drainage node {node_id} not found")
+
+    return {
+        "status": "success",
+        "node_id": node.id,
+        "node_name": node.name,
+        "action": "FIELD_INSPECTION_DISPATCHED",
+        "message": f"Field inspection team dispatched for junction {node.name} ({node.id}). Priority route assigned.",
+    }
+

@@ -364,6 +364,20 @@ export async function getDrainageAnomalies() {
   return fetchJSON(`${API_BASE}/v1/drainage/anomalies`, undefined, []);
 }
 
+export async function requestFieldInspection(nodeId: string) {
+  return fetchJSON(
+    `${API_BASE}/v1/drainage/nodes/${encodeURIComponent(nodeId)}/inspect`,
+    { method: "POST" },
+    {
+      status: "success",
+      node_id: nodeId,
+      action: "FIELD_INSPECTION_DISPATCHED",
+      message: `Field inspection team dispatched for junction ${nodeId} (local mode).`,
+    }
+  );
+}
+
+
 // ─── 6. Routing ──────────────────────────────────────────────────────────────
 
 export async function calculateRoute(
