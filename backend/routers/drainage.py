@@ -436,7 +436,6 @@ async def request_field_inspection(node_id: str, db: AsyncSession = Depends(get_
             status="ASSIGNED",
             flood_risk=node_status if node_status in ["LOW", "MODERATE", "HIGH", "SEVERE"] else "HIGH",
             assigned_team=team_id,
-
             timestamps=[
                 {"status": "Drainage Inspection Dispatched", "time": now_time},
                 {"status": "Clearance Team En Route", "time": now_time},

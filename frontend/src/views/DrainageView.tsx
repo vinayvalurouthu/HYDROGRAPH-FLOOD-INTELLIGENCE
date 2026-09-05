@@ -82,7 +82,6 @@ export default function DrainageView({ cityDataset, activeCity }: DrainageViewPr
     }
   };
 
-  const activeSelected = selected || nodes[0] || drainageNodes[0];
   const selectedCfg = getStatusConfig(activeSelected.status);
 
   return (

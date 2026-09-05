@@ -747,6 +747,7 @@ export default function App() {
           </div>
         </div>
       </div>
-    </DispatchProvider>
-  );
+    </div>
+  </DispatchProvider>
+);
 }
