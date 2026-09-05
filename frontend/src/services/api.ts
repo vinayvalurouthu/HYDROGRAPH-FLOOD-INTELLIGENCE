@@ -171,18 +171,36 @@ export async function getHotspots(
       total_affected_population: 0,
       avg_urgency_score: 0,
       worst_hotspot_id: null,
-      hotspots: mock.roads.map((r) => ({
-        ...r,
-        is_closed: r.closed,
-        score: { composite: 0, depth_factor: 0, velocity_factor: 0, drainage_factor: 0, urgency_factor: 0, rainfall_factor: 0, confidence_factor: 0, risk_tier: r.risk },
-        actionRecommendation: "",
-        actionPriority: "",
-        trend: "STABLE",
-        nearbySOS: [],
-        nearbyShelters: [],
-        nearbyDrainage: [],
-        affectedPopulation: 0,
-      })),
+      hotspots: mock.roads.map((r) => {
+        const depth_factor = Math.min(35, (r.depthCm / 100) * 35);
+        const velocity_factor = Math.min(20, (r.velocityMs / 2) * 20);
+        const drainage_factor = Math.min(15, ((r as any).drainUtilPct || 70) / 100 * 15);
+        const urgency_factor = Math.min(15, Math.max(0, (1 - ((r as any).timeToFloodMin || 30) / 60) * 15));
+        const rainfall_factor = Math.min(10, (((r as any).rainfallMmHr || 90) / 100) * 10);
+        const confidence_factor = Math.min(5, (((r as any).confidencePct || 85) / 100) * 5);
+        const composite = Math.round(depth_factor + velocity_factor + drainage_factor + urgency_factor + rainfall_factor + confidence_factor);
+        return {
+          ...r,
+          is_closed: r.closed,
+          score: {
+            composite,
+            depth_factor: Math.round(depth_factor),
+            velocity_factor: Math.round(velocity_factor),
+            drainage_factor: Math.round(drainage_factor),
+            urgency_factor: Math.round(urgency_factor),
+            rainfall_factor: Math.round(rainfall_factor),
+            confidence_factor: Math.round(confidence_factor),
+            risk_tier: r.risk
+          },
+          actionRecommendation: r.risk === "SEVERE" ? "CLOSE IMMEDIATELY" : r.risk === "HIGH" ? "MONITOR" : "OBSERVE",
+          actionPriority: r.risk === "SEVERE" ? "CRITICAL" : "MODERATE",
+          trend: "STABLE",
+          nearbySOS: [],
+          nearbyShelters: [],
+          nearbyDrainage: [],
+          affectedPopulation: 0,
+        };
+      }),
     },
   );
 }

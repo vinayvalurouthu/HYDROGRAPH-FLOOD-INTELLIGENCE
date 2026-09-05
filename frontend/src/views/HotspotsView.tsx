@@ -178,27 +178,37 @@ export default function HotspotsView({
     try {
       if (cityDataset) {
         // Compute hotspots locally based on the generated dataset
-        const computedHotspots = cityDataset.roads.map((r) => ({
-          ...r,
-          is_closed: r.closed || false,
-          score: {
-            composite: 0,
-            depth_factor: 0,
-            velocity_factor: 0,
-            drainage_factor: 0,
-            urgency_factor: 0,
-            rainfall_factor: 0,
-            confidence_factor: 0,
-            risk_tier: r.risk,
-          },
-          actionRecommendation: r.risk === "SEVERE" ? "CLOSE IMMEDIATELY" : r.risk === "HIGH" ? "MONITOR" : "OBSERVE",
-          actionPriority: r.risk === "SEVERE" ? "CRITICAL" : "MODERATE",
-          trend: "STABLE",
-          nearbySOS: [],
-          nearbyShelters: [],
-          nearbyDrainage: [],
-          affectedPopulation: 0,
-        }));
+        const computedHotspots = cityDataset.roads.map((r) => {
+          const depth_factor = Math.min(35, (r.depthCm / 100) * 35);
+          const velocity_factor = Math.min(20, (r.velocityMs / 2) * 20);
+          const drainage_factor = Math.min(15, (r.drainUtilPct / 100) * 15);
+          const urgency_factor = Math.min(15, Math.max(0, (1 - r.timeToFloodMin / 60) * 15));
+          const rainfall_factor = Math.min(10, (r.rainfallMmHr / 100) * 10);
+          const confidence_factor = Math.min(5, (r.confidencePct / 100) * 5);
+          const composite = Math.round(depth_factor + velocity_factor + drainage_factor + urgency_factor + rainfall_factor + confidence_factor);
+
+          return {
+            ...r,
+            is_closed: r.closed || false,
+            score: {
+              composite,
+              depth_factor: Math.round(depth_factor),
+              velocity_factor: Math.round(velocity_factor),
+              drainage_factor: Math.round(drainage_factor),
+              urgency_factor: Math.round(urgency_factor),
+              rainfall_factor: Math.round(rainfall_factor),
+              confidence_factor: Math.round(confidence_factor),
+              risk_tier: r.risk,
+            },
+            actionRecommendation: r.risk === "SEVERE" ? "CLOSE IMMEDIATELY" : r.risk === "HIGH" ? "MONITOR" : "OBSERVE",
+            actionPriority: r.risk === "SEVERE" ? "CRITICAL" : "MODERATE",
+            trend: "STABLE",
+            nearbySOS: [],
+            nearbyShelters: [],
+            nearbyDrainage: [],
+            affectedPopulation: 0,
+          };
+        });
         
         computedHotspots.sort((a, b) => {
           const riskWeight: Record<string, number> = { SEVERE: 4, HIGH: 3, MODERATE: 2, LOW: 1 };
@@ -211,13 +221,15 @@ export default function HotspotsView({
         const moderateCount = computedHotspots.filter((h) => h.risk === "MODERATE").length;
         const lowCount = computedHotspots.filter((h) => h.risk === "LOW").length;
 
+        const avg_urgency_score = computedHotspots.length ? Math.round(computedHotspots.reduce((sum, h) => sum + h.score.composite, 0) / computedHotspots.length) : 0;
+
         const resData: HotspotListResponse = {
           count: computedHotspots.length,
           critical_count: criticalCount,
           severe_count: severeCount,
           high_count: highCount,
           total_affected_population: 0,
-          avg_urgency_score: 0,
+          avg_urgency_score,
           worst_hotspot_id: computedHotspots.length > 0 ? computedHotspots[0].id : null,
           hotspots: computedHotspots,
         };
@@ -232,7 +244,7 @@ export default function HotspotsView({
           closed_roads: computedHotspots.filter((h) => h.is_closed).length,
           avg_depth_cm: computedHotspots.length ? computedHotspots.reduce((sum, h) => sum + h.depthCm, 0) / computedHotspots.length : 0,
           max_depth_cm: computedHotspots.length ? Math.max(...computedHotspots.map(h => h.depthCm)) : 0,
-          avg_urgency_score: 0,
+          avg_urgency_score,
           total_affected_population: 0,
           worsening_count: 0,
           stable_count: computedHotspots.length,
@@ -716,12 +728,12 @@ export default function HotspotsView({
           {showScoreBreakdown && (
             <div className="mt-3 space-y-2 animate-slide-up">
               {[
-                { label: "Depth Factor (35%)", value: selected.score.depth_factor, max: 200 },
-                { label: "Velocity Factor (20%)", value: selected.score.velocity_factor, max: 200 },
-                { label: "Drainage Stress (15%)", value: selected.score.drainage_factor, max: 100 },
-                { label: "Urgency Factor (15%)", value: selected.score.urgency_factor, max: 100 },
-                { label: "Rainfall Intensity (10%)", value: selected.score.rainfall_factor, max: 100 },
-                { label: "Confidence (5%)", value: selected.score.confidence_factor, max: 100 },
+                { label: "Depth Factor (35%)", value: selected.score.depth_factor, max: 35 },
+                { label: "Velocity Factor (20%)", value: selected.score.velocity_factor, max: 20 },
+                { label: "Drainage Stress (15%)", value: selected.score.drainage_factor, max: 15 },
+                { label: "Urgency Factor (15%)", value: selected.score.urgency_factor, max: 15 },
+                { label: "Rainfall Intensity (10%)", value: selected.score.rainfall_factor, max: 10 },
+                { label: "Confidence (5%)", value: selected.score.confidence_factor, max: 5 },
               ].map((f) => (
                 <div key={f.label}>
                   <div className="flex items-center justify-between mb-0.5">
