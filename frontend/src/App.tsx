@@ -70,7 +70,7 @@ function RightPanel({
   roadId: string | null;
   onClose: () => void;
   onCloseRoad: (id: string) => void;
-  onNavigate: (view: string) => void;
+  onNavigate: (view: string, roadId?: string) => void;
 }) {
   const [showRoadClose, setShowRoadClose] = useState(false);
   const [roadClosed, setRoadClosed] = useState(false);
@@ -190,7 +190,7 @@ function RightPanel({
       <div className="px-4 py-3 space-y-2 flex-shrink-0" style={{ borderTop: "1px solid #1a2640" }}>
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => onNavigate("routing")}
+            onClick={() => onNavigate("routing", road.id)}
             className="py-2 rounded-lg text-[11px] font-mono font-bold text-white hover:opacity-90 transition-all"
             style={{ background: "#06b6d4" }}
           >
@@ -286,11 +286,22 @@ function RightPanel({
   );
 }
 
+export interface RoutingRequestPayload {
+  from: string;
+  to: string;
+  roadId?: string;
+  roadName?: string;
+  lat?: number;
+  lng?: number;
+  timestamp: number;
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState("overview");
   const [activeCity, setActiveCity] = useState<CityPreset>(PRESET_CITIES[0]);
   const [cityDataset, setCityDataset] = useState<CityFloodDataset | null>(null);
   const [selectedRoad, setSelectedRoad] = useState<string | null>(null);
+  const [routingRequest, setRoutingRequest] = useState<RoutingRequestPayload | null>(null);
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [showAlerts, setShowAlerts] = useState(false);
   const [localAlerts, setLocalAlerts] = useState<Alert[]>(alerts);
@@ -305,6 +316,21 @@ export default function App() {
   }, []);
 
   const handleNavigate = (view: string, roadId?: string) => {
+    const targetRoadId = roadId || selectedRoad;
+    if (view === "routing") {
+      const allRoads = cityDataset?.roads || roads;
+      const road = targetRoadId ? allRoads.find((r) => r.id === targetRoadId) : undefined;
+      const destinationName = road ? `${road.name} (${road.id})` : targetRoadId || "Rajam Relief Hub";
+      setRoutingRequest({
+        from: "Current Location",
+        to: destinationName,
+        roadId: road?.id || targetRoadId || undefined,
+        roadName: road?.name || targetRoadId || undefined,
+        lat: road?.lat,
+        lng: road?.lng,
+        timestamp: Date.now(),
+      });
+    }
     setActiveView(view);
     if (roadId) setSelectedRoad(roadId);
   };
@@ -573,7 +599,11 @@ export default function App() {
               <DrainageView cityDataset={cityDataset} activeCity={activeCity} />
             )}
             {activeView === "routing" && (
-              <RoutingView activeCity={activeCity} cityDataset={cityDataset} />
+              <RoutingView
+                activeCity={activeCity}
+                cityDataset={cityDataset}
+                routingRequest={routingRequest}
+              />
             )}
             {activeView === "shelters" && <SheltersView />}
             {activeView === "sos" && (

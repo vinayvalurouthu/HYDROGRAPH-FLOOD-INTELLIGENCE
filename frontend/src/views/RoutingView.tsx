@@ -14,7 +14,6 @@ import {
   X,
   Volume2,
   ShieldCheck,
-  Gauge,
   Radio,
 } from "lucide-react";
 import {
@@ -25,10 +24,12 @@ import {
   type AreaMapLayout,
 } from "../services/routingEngine";
 import type { CityPreset, CityFloodDataset } from "../services/cityDataGenerator";
+import type { RoutingRequestPayload } from "../App";
 
 interface RoutingViewProps {
   activeCity?: CityPreset;
   cityDataset?: CityFloodDataset | null;
+  routingRequest?: RoutingRequestPayload | null;
 }
 
 const exposureColor = {
@@ -38,7 +39,7 @@ const exposureColor = {
   SEVERE: "#ef4444",
 };
 
-export default function RoutingView({ activeCity }: RoutingViewProps) {
+export default function RoutingView({ activeCity, cityDataset, routingRequest }: RoutingViewProps) {
   const [from, setFrom] = useState("Current Location");
   const [to, setTo] = useState("rajam");
   const [calculating, setCalculating] = useState(false);
@@ -58,15 +59,26 @@ export default function RoutingView({ activeCity }: RoutingViewProps) {
   const [voiceAnnouncement, setVoiceAnnouncement] = useState<string | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  // Compute default initial route and area map background layout on mount or activeCity change
+  // Compute dynamic route and area map layout based on incoming routingRequest payload or activeCity
   useEffect(() => {
     const cityName = activeCity?.name || "Patna";
-    const res = calculateDynamicRoute("Current Location", to);
-    const layout = getAreaMapLayout(to, cityName);
+    const initialFrom = routingRequest?.from || "Current Location";
+    const initialTo = routingRequest?.to || "rajam";
+
+    setFrom(initialFrom);
+    setTo(initialTo);
+
+    // Purge canvas / previous state on mount or new request payload
+    setCalculated(false);
+    setRouteResult(null);
+    setMapLayout(null);
+
+    const res = calculateDynamicRoute(initialFrom, initialTo);
+    const layout = getAreaMapLayout(initialTo, cityName);
     setRouteResult(res);
     setMapLayout(layout);
     setCalculated(true);
-  }, [activeCity?.name]);
+  }, [routingRequest?.timestamp, activeCity?.name]);
 
   const handleCalculate = async (fromVal?: string, toVal?: string) => {
     const activeFrom = fromVal !== undefined ? fromVal : from;
@@ -100,6 +112,21 @@ export default function RoutingView({ activeCity }: RoutingViewProps) {
     : [];
 
   const activeOption = currentOptions.find((r) => r.id === selectedRouteId) || currentOptions[0];
+
+  // ─── Dynamic Preset Chips derived from City Dataset ──────────────────────────
+  const presetChips = cityDataset
+    ? [
+        ...cityDataset.shelters.slice(0, 3).map((s) => ({ label: s.name, val: `${s.name} (${s.id})` })),
+        ...cityDataset.roads.slice(0, 3).map((r) => ({ label: r.name, val: `${r.name} (${r.id})` })),
+      ]
+    : [
+        { label: "Rajam", val: "Rajam Relief Hub" },
+        { label: "Danapur Station", val: "Danapur Station" },
+        { label: "PMCH Hospital", val: "PMCH Medical Center" },
+        { label: "Gandhi Maidan", val: "Gandhi Maidan Core" },
+        { label: "Boring Road", val: "Boring Road Crossing" },
+        { label: "Shelter SH-03", val: "Sports Complex Shelter (SH-03)" },
+      ];
 
   // ─── Start / Stop Live Navigation ─────────────────────────────────────────
   const startNavigation = () => {
@@ -240,20 +267,20 @@ export default function RoutingView({ activeCity }: RoutingViewProps) {
               </div>
             </div>
 
-            {/* PRESET AREA CHIPS */}
+            {/* REACTIVE PRESET DESTINATION CHIPS */}
             <div>
               <label className="text-[9px] font-mono uppercase tracking-wider mb-1 block text-slate-400">
-                SELECT AREA / DESTINATION
+                REGION PRESETS ({activeCity?.name || "PATNA"})
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {["Rajam", "Danapur Station", "PMCH Hospital", "Gandhi Maidan", "Boring Road", "Shelter SH-03"].map((place) => {
-                  const isActive = to.toLowerCase().includes(place.toLowerCase().split(" ")[0]);
+                {presetChips.map((chip) => {
+                  const isActive = to.toLowerCase().includes(chip.label.toLowerCase().split(" ")[0]);
                   return (
                     <button
-                      key={place}
+                      key={chip.val}
                       onClick={() => {
-                        setTo(place);
-                        handleCalculate(from, place);
+                        setTo(chip.val);
+                        handleCalculate(from, chip.val);
                       }}
                       className="text-[10px] font-mono px-2 py-1 rounded border transition-all hover:border-cyan-500 flex items-center gap-1"
                       style={{
@@ -263,7 +290,7 @@ export default function RoutingView({ activeCity }: RoutingViewProps) {
                       }}
                     >
                       <span className="w-1.5 h-1.5 rounded-full" style={{ background: isActive ? "#06b6d4" : "#4a6080" }} />
-                      {place}
+                      {chip.label}
                     </button>
                   );
                 })}
@@ -311,7 +338,7 @@ export default function RoutingView({ activeCity }: RoutingViewProps) {
                           className="text-[10px] font-mono font-bold px-2 py-0.5 rounded"
                           style={{ background: `${r.color}25`, color: r.color, border: `1px solid ${r.color}40` }}
                         >
-                          {r.label}
+                          {r.label === "RECOMMENDED" ? "RECOMMENDED ROUTE" : "ALTERNATIVE ROUTE"}
                         </span>
                         <span className="text-[10px] font-mono font-semibold" style={{ color: "#8da0b8" }}>
                           {r.type}
@@ -761,7 +788,7 @@ export default function RoutingView({ activeCity }: RoutingViewProps) {
           </div>
         )}
 
-        {/* Dynamic Route Legend (Non-Navigating mode) */}
+        {/* Standardized Legend Clean-up */}
         {calculated && !isNavigating && (
           <div
             className="absolute bottom-4 left-4 rounded-xl p-3 animate-fade-in shadow-2xl backdrop-blur-md"
@@ -769,10 +796,10 @@ export default function RoutingView({ activeCity }: RoutingViewProps) {
           >
             <div className="space-y-1.5">
               {[
-                { color: "#10b981", dash: true, label: "Safe Route (Antigravity Path)" },
-                { color: "#ef4444", dash: true, label: `${mapLayout?.areaName} Flood Hazard` },
-                { color: "#06b6d4", dash: false, label: `Origin: ${routeResult?.fromLocation.name}` },
-                { color: "#f59e0b", dash: false, label: "Alternative Route" },
+                { color: "#10b981", dash: true, label: "Recommended Route (Safest)" },
+                { color: "#ef4444", dash: true, label: "High Risk Inundation Zone" },
+                { color: "#06b6d4", dash: false, label: "Origin Point (GPS)" },
+                { color: "#f59e0b", dash: false, label: "Alternative Corridor (Faster)" },
               ].map((l) => (
                 <div key={l.label} className="flex items-center gap-2">
                   <div
