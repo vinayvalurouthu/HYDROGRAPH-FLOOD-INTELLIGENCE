@@ -45,6 +45,8 @@ interface Props {
   timelineIndex: number;
   onTimelineChange: (idx: number) => void;
   onCloseRoad: (roadId: string) => void;
+  activeCity?: CityPreset;
+  cityDataset?: CityFloodDataset | null;
   onCityChange?: (city: CityPreset) => void;
   onCityDatasetChange?: (dataset: CityFloodDataset) => void;
 }
@@ -88,6 +90,8 @@ export default function FloodMapView({
   timelineIndex,
   onTimelineChange,
   onCloseRoad,
+  activeCity,
+  cityDataset,
   onCityChange,
   onCityDatasetChange,
 }: Props) {
@@ -114,21 +118,21 @@ export default function FloodMapView({
   const [mapReady, setMapReady] = useState(false);
 
   // Dynamic City Intelligence State
-  const [currentCity, setCurrentCity] = useState<CityPreset>(PRESET_CITIES[0]);
-  const [locationInput, setLocationInput] = useState("Patna, Bihar");
+  const [currentCity, setCurrentCity] = useState<CityPreset>(activeCity || PRESET_CITIES[0]);
+  const [locationInput, setLocationInput] = useState(`${(activeCity || PRESET_CITIES[0]).name}, ${(activeCity || PRESET_CITIES[0]).state}`);
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [searchStatusMsg, setSearchStatusMsg] = useState("");
-  const [dataSource, setDataSource] = useState<"PRESET" | "OSM_LIVE" | "SIMULATION">("PRESET");
+  const [dataSource, setDataSource] = useState<"PRESET" | "OSM_LIVE" | "SIMULATION">(cityDataset ? cityDataset.source : "PRESET");
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
-  const [mapCenter, setMapCenter] = useState<[number, number]>(PATNA_CENTER);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(cityDataset ? cityDataset.city.center : PATNA_CENTER);
 
   // Data layers
-  const [roads, setRoads] = useState<Road[]>(mockRoads);
-  const [forecast, setForecast] = useState<ForecastPoint[]>(mockForecast);
-  const [floodZones, setFloodZones] = useState<any[]>([]);
-  const [sosIncidents, setSosIncidents] = useState(mockSOS);
-  const [shelters, setShelters] = useState(mockShelters);
-  const [drainageNodes, setDrainageNodes] = useState(mockDrainageNodes);
+  const [roads, setRoads] = useState<Road[]>(cityDataset ? cityDataset.roads : mockRoads);
+  const [forecast, setForecast] = useState<ForecastPoint[]>(cityDataset ? cityDataset.forecast : mockForecast);
+  const [floodZones, setFloodZones] = useState<any[]>(cityDataset ? cityDataset.floodZones : []);
+  const [sosIncidents, setSosIncidents] = useState(cityDataset ? cityDataset.sosIncidents : mockSOS);
+  const [shelters, setShelters] = useState(cityDataset ? cityDataset.shelters : mockShelters);
+  const [drainageNodes, setDrainageNodes] = useState(cityDataset ? cityDataset.drainageNodes : mockDrainageNodes);
 
   // Apply complete city dataset
   const applyCityDataset = useCallback((dataset: CityFloodDataset) => {
@@ -246,7 +250,7 @@ export default function FloodMapView({
     if (!mapContainerRef.current || mapRef.current) return;
 
     const map = L.map(mapContainerRef.current, {
-      center: PATNA_CENTER,
+      center: mapCenter,
       zoom: DEFAULT_ZOOM,
       zoomControl: false,
       attributionControl: false,

@@ -541,6 +541,8 @@ export default function App() {
                 timelineIndex={timelineIndex}
                 onTimelineChange={setTimelineIndex}
                 onCloseRoad={(id) => setClosedRoads((p) => new Set(p).add(id))}
+                activeCity={activeCity}
+                cityDataset={cityDataset}
                 onCityChange={setActiveCity}
                 onCityDatasetChange={setCityDataset}
               />
