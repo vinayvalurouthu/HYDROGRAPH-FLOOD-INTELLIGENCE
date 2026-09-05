@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   BarChart,
   Bar,
@@ -11,10 +13,16 @@ import {
 import { Play, RotateCcw, Save, TrendingUp, TrendingDown, CheckCircle } from "lucide-react";
 import { runScenario, baselineScenario, historicalEvents } from "../mockData";
 import type { ScenarioResult } from "../mockData";
+import type { CityPreset, CityFloodDataset } from "../services/cityDataGenerator";
 
 const riverLevels = ["NORMAL", "WARNING", "DANGER", "EXTREME"] as const;
 
-export default function ScenariosView() {
+interface Props {
+  activeCity?: CityPreset;
+  cityDataset?: CityFloodDataset | null;
+}
+
+export default function ScenariosView({ activeCity, cityDataset }: Props) {
   const [rainfall, setRainfall] = useState(100);
   const [drainage, setDrainage] = useState(100);
   const [riverLevel, setRiverLevel] = useState<string>("NORMAL");
@@ -26,6 +34,93 @@ export default function ScenariosView() {
   >([]);
   const [saveToast, setSaveToast] = useState(false);
   const [compareMode, setCompareMode] = useState<"swipe" | "blink">("swipe");
+
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const floodLayerRef = useRef<L.GeoJSON | null>(null);
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+    
+    const center = activeCity ? activeCity.center : [25.6093, 85.1376];
+    const zoom = activeCity ? activeCity.zoom : 13;
+
+    const map = L.map(mapContainerRef.current, {
+      center: center as [number, number],
+      zoom,
+      zoomControl: false,
+    });
+
+    L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20,
+      }
+    ).addTo(map);
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [activeCity]);
+
+  useEffect(() => {
+    if (!mapRef.current || !cityDataset) return;
+    const map = mapRef.current;
+
+    if (floodLayerRef.current) {
+      map.removeLayer(floodLayerRef.current);
+    }
+
+    if (!result && !running) {
+      floodLayerRef.current = L.geoJSON(
+        cityDataset.floodZones.map(fz => fz.geojson), 
+        {
+          style: {
+            color: "#06b6d4",
+            fillColor: "#06b6d4",
+            fillOpacity: 0.15,
+            weight: 1
+          }
+        }
+      ).addTo(map);
+    } else if (result && !running) {
+      const deltaFactor = 1 + (result.floodedAreaPct / 100);
+      
+      const scaledFeatures = cityDataset.floodZones.map(fz => {
+         const newCoords = fz.geojson.geometry.coordinates[0].map((coord: [number, number]) => {
+            const [lng, lat] = coord;
+            const cLng = activeCity!.center[1];
+            const cLat = activeCity!.center[0];
+            return [
+               cLng + (lng - cLng) * deltaFactor,
+               cLat + (lat - cLat) * deltaFactor
+            ];
+         });
+         return {
+            ...fz.geojson,
+            geometry: {
+               ...fz.geojson.geometry,
+               coordinates: [newCoords]
+            }
+         };
+      });
+
+      const dangerColor = result.peakDepthDeltaCm > 20 ? "#ef4444" : "#f59e0b";
+      floodLayerRef.current = L.geoJSON(scaledFeatures, {
+        style: {
+          color: dangerColor,
+          fillColor: dangerColor,
+          fillOpacity: 0.35,
+          weight: 1.5
+        }
+      }).addTo(map);
+    }
+  }, [result, running, cityDataset, activeCity]);
 
   const handleRun = async () => {
     setRunning(true);
@@ -279,259 +374,200 @@ export default function ScenariosView() {
         </div>
       </div>
 
-      {/* Results */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
-        {!result && !running && (
-          <div
-            className="h-full flex flex-col items-center justify-center gap-3"
-            style={{ color: "#4a6080" }}
-          >
-            <div className="text-4xl mb-2">⚡</div>
-            <p className="text-sm font-mono">Configure conditions and run scenario</p>
-            <p className="text-xs" style={{ color: "#2a3a55" }}>
-              Adjust rainfall, drainage capacity, and river level to simulate flood impact
-            </p>
-          </div>
-        )}
+      {/* Map Background & Results Panel */}
+      <div className="flex-1 relative overflow-hidden">
+        <div ref={mapContainerRef} className="absolute inset-0 bg-[#07111e] z-0" />
 
-        {running && (
-          <div className="h-full flex flex-col items-center justify-center gap-4">
-            <div className="w-12 h-12 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
-            <div className="text-sm font-mono" style={{ color: "#22d3ee" }}>
-              Running hydraulic model…
+        {/* Floating overlays */}
+        <div className="absolute inset-0 z-10 pointer-events-none p-5 flex flex-col justify-between">
+          
+          {!result && !running && (
+            <div
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-3 p-6 rounded-2xl"
+              style={{ background: "rgba(12,19,34,0.8)", border: "1px solid #1a2640", backdropFilter: "blur(8px)" }}
+            >
+              <div className="text-4xl mb-2">⚡</div>
+              <p className="text-sm font-mono text-white">Configure conditions and run scenario</p>
+              <p className="text-xs" style={{ color: "#8da0b8" }}>
+                Adjust rainfall, drainage capacity, and river level to simulate flood impact
+              </p>
             </div>
-            <div className="text-xs" style={{ color: "#4a6080" }}>
-              Calculating flood extent and road impact
-            </div>
-          </div>
-        )}
+          )}
 
-        {result && !running && (
-          <>
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-white">SCENARIO RESULT</h2>
-              <div className="flex gap-2">
+          {running && (
+            <div
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-4 p-8 rounded-2xl"
+              style={{ background: "rgba(12,19,34,0.9)", border: "1px solid #1a2640", backdropFilter: "blur(8px)" }}
+            >
+              <div className="w-12 h-12 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+              <div className="text-sm font-mono font-bold" style={{ color: "#22d3ee" }}>
+                Running hydraulic model…
+              </div>
+              <div className="text-xs" style={{ color: "#8da0b8" }}>
+                Calculating flood extent and road impact
+              </div>
+            </div>
+          )}
+
+          {result && !running && (
+            <div className="pointer-events-auto absolute top-5 right-5 w-96 flex flex-col gap-4 max-h-[calc(100vh-100px)] overflow-y-auto pb-5">
+              
+              {/* Header card */}
+              <div
+                className="p-4 rounded-xl flex items-center justify-between shadow-2xl"
+                style={{ background: "rgba(8,13,28,0.9)", border: "1px solid #1a2640", backdropFilter: "blur(12px)" }}
+              >
+                <h2 className="text-sm font-bold text-white">SCENARIO RESULT</h2>
                 <button
                   onClick={handleSave}
-                  className="px-3 py-1.5 rounded-lg text-xs font-mono flex items-center gap-1 hover:bg-white/5 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-mono flex items-center gap-1 hover:bg-white/10 transition-colors"
                   style={{ border: "1px solid #1a2640", color: "#4a6080" }}
                 >
                   <Save size={12} />
                   SAVE
                 </button>
-                <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #1a2640" }}>
-                  {(["swipe", "blink"] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setCompareMode(m)}
-                      className="px-3 py-1.5 text-xs font-mono transition-colors"
-                      style={{
-                        background: compareMode === m ? "rgba(6,182,212,0.15)" : "transparent",
-                        color: compareMode === m ? "#22d3ee" : "#4a6080",
-                      }}
-                    >
-                      {m.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
               </div>
-            </div>
 
-            {/* Result KPIs */}
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                {
-                  label: "Flooded Roads",
-                  baseline: 12,
-                  delta: result.floodedRoadsDelta,
-                  unit: "",
-                  dangerous: true,
-                },
-                {
-                  label: "Peak Depth",
-                  baseline: 42,
-                  delta: result.peakDepthDeltaCm,
-                  unit: " cm",
-                  dangerous: true,
-                },
-                {
-                  label: "Flooded Area",
-                  baseline: baselineScenario.floodedAreaPct,
-                  delta: result.floodedAreaPct - baselineScenario.floodedAreaPct,
-                  unit: "%",
-                  dangerous: true,
-                },
-                {
-                  label: "Time-to-Flood",
-                  baseline: 27,
-                  delta: result.timeToFloodDeltaMin,
-                  unit: " min",
-                  dangerous: result.timeToFloodDeltaMin < 0,
-                },
-                {
-                  label: "Shelters Affected",
-                  baseline: 1,
-                  delta: result.affectedSheltersDelta,
-                  unit: "",
-                  dangerous: true,
-                },
-                {
-                  label: "SOS Exposure",
-                  baseline: baselineScenario.sosExposurePct,
-                  delta: result.sosExposurePct - baselineScenario.sosExposurePct,
-                  unit: "%",
-                  dangerous: true,
-                },
-              ].map((item) => {
-                const isWorse =
-                  item.delta > 0 ? item.dangerous : !item.dangerous;
-                return (
-                  <div
-                    key={item.label}
-                    className="rounded-xl p-3"
-                    style={{
-                      background:
-                        item.delta === 0
-                          ? "rgba(12,19,34,0.5)"
-                          : isWorse
-                            ? "rgba(239,68,68,0.07)"
-                            : "rgba(16,185,129,0.07)",
-                      border: `1px solid ${
-                        item.delta === 0
-                          ? "#1a2640"
-                          : isWorse
-                            ? "rgba(239,68,68,0.25)"
-                            : "rgba(16,185,129,0.25)"
-                      }`,
-                    }}
-                  >
-                    <div className="text-[10px] font-mono mb-1" style={{ color: "#4a6080" }}>
-                      {item.label}
-                    </div>
-                    <div className="flex items-end gap-1">
-                      <span
-                        className="text-xl font-mono font-black"
-                        style={{ color: "#f0f4ff" }}
-                      >
-                        {item.baseline + item.delta}{item.unit}
-                      </span>
-                    </div>
+              {/* Result KPIs */}
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  {
+                    label: "Flooded Roads",
+                    baseline: 12,
+                    delta: result.floodedRoadsDelta,
+                    unit: "",
+                    dangerous: true,
+                  },
+                  {
+                    label: "Peak Depth",
+                    baseline: 42,
+                    delta: result.peakDepthDeltaCm,
+                    unit: " cm",
+                    dangerous: true,
+                  },
+                  {
+                    label: "Flooded Area",
+                    baseline: baselineScenario.floodedAreaPct,
+                    delta: result.floodedAreaPct - baselineScenario.floodedAreaPct,
+                    unit: "%",
+                    dangerous: true,
+                  },
+                  {
+                    label: "Time-to-Flood",
+                    baseline: 27,
+                    delta: result.timeToFloodDeltaMin,
+                    unit: " min",
+                    dangerous: result.timeToFloodDeltaMin < 0,
+                  },
+                  {
+                    label: "Shelters Affected",
+                    baseline: 1,
+                    delta: result.affectedSheltersDelta,
+                    unit: "",
+                    dangerous: true,
+                  },
+                  {
+                    label: "SOS Exposure",
+                    baseline: baselineScenario.sosExposurePct,
+                    delta: result.sosExposurePct - baselineScenario.sosExposurePct,
+                    unit: "%",
+                    dangerous: true,
+                  },
+                ].map((item) => {
+                  const isWorse = item.delta > 0 ? item.dangerous : !item.dangerous;
+                  return (
                     <div
-                      className="flex items-center gap-1 text-[10px] font-mono mt-1"
-                      style={{
-                        color: item.delta === 0 ? "#4a6080" : isWorse ? "#fca5a5" : "#6ee7b7",
-                      }}
-                    >
-                      {item.delta > 0 ? (
-                        <TrendingUp size={10} />
-                      ) : item.delta < 0 ? (
-                        <TrendingDown size={10} />
-                      ) : null}
-                      {item.delta > 0 ? "+" : ""}{item.delta}{item.unit} vs baseline
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Comparison chart */}
-            <div
-              className="rounded-xl p-4"
-              style={{ background: "rgba(12,19,34,0.8)", border: "1px solid #1a2640" }}
-            >
-              <h3 className="text-sm font-semibold text-white mb-3">
-                BASELINE vs SCENARIO — Impact Comparison
-              </h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fill: "#4a6080", fontSize: 10, fontFamily: "JetBrains Mono" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fill: "#4a6080", fontSize: 10, fontFamily: "JetBrains Mono" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: "#0c1322",
-                      border: "1px solid #1a2640",
-                      borderRadius: 8,
-                      color: "#f0f4ff",
-                      fontFamily: "JetBrains Mono",
-                      fontSize: 11,
-                    }}
-                  />
-                  <Legend
-                    wrapperStyle={{ fontSize: 10, fontFamily: "JetBrains Mono", color: "#4a6080" }}
-                  />
-                  <Bar dataKey="baseline" name="Baseline" fill="rgba(6,182,212,0.5)" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="scenario" name="Scenario" fill="rgba(239,68,68,0.6)" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Split map comparison */}
-            <div
-              className="rounded-xl overflow-hidden"
-              style={{ border: "1px solid #1a2640" }}
-            >
-              <div
-                className="grid grid-cols-2"
-                style={{ gap: 0 }}
-              >
-                {["BASELINE", "SCENARIO"].map((label, idx) => (
-                  <div
-                    key={label}
-                    className="relative h-40 map-grid flex items-center justify-center"
-                    style={{ background: "#07111e" }}
-                  >
-                    {/* Mini city SVG */}
-                    <svg viewBox="0 0 300 160" width="100%" height="100%">
-                      {/* roads */}
-                      <line x1="0" y1="60" x2="300" y2="60" stroke="#1e3050" strokeWidth="2" />
-                      <line x1="0" y1="100" x2="300" y2="100" stroke="#1e3050" strokeWidth="2" />
-                      <line x1="80" y1="0" x2="80" y2="160" stroke="#1e3050" strokeWidth="2" />
-                      <line x1="160" y1="0" x2="160" y2="160" stroke="#1e3050" strokeWidth="2" />
-                      <line x1="220" y1="0" x2="220" y2="160" stroke="#1e3050" strokeWidth="2" />
-                      {/* Flood zones - more in scenario */}
-                      <rect
-                        x={0}
-                        y={50}
-                        width={idx === 1 ? 200 : 120}
-                        height={idx === 1 ? 80 : 50}
-                        fill={idx === 1 ? "rgba(185,28,28,0.45)" : "rgba(239,68,68,0.3)"}
-                        rx={4}
-                      />
-                      <rect
-                        x={idx === 1 ? 140 : 80}
-                        y={90}
-                        width={idx === 1 ? 160 : 100}
-                        height={idx === 1 ? 70 : 45}
-                        fill={idx === 1 ? "rgba(239,68,68,0.4)" : "rgba(250,204,21,0.25)"}
-                        rx={4}
-                      />
-                    </svg>
-                    <div
-                      className="absolute top-2 left-2 text-[10px] font-mono font-bold px-2 py-0.5 rounded"
+                      key={item.label}
+                      className="rounded-xl p-3 shadow-xl"
                       style={{
                         background:
-                          idx === 0 ? "rgba(6,182,212,0.15)" : "rgba(239,68,68,0.15)",
-                        color: idx === 0 ? "#22d3ee" : "#fca5a5",
-                        border: `1px solid ${idx === 0 ? "rgba(6,182,212,0.3)" : "rgba(239,68,68,0.3)"}`,
+                          item.delta === 0
+                            ? "rgba(12,19,34,0.8)"
+                            : isWorse
+                              ? "rgba(239,68,68,0.15)"
+                              : "rgba(16,185,129,0.15)",
+                        border: `1px solid ${
+                          item.delta === 0
+                            ? "#1a2640"
+                            : isWorse
+                              ? "rgba(239,68,68,0.35)"
+                              : "rgba(16,185,129,0.35)"
+                        }`,
+                        backdropFilter: "blur(12px)",
                       }}
                     >
-                      {label}
+                      <div className="text-[10px] font-mono mb-1" style={{ color: "#8da0b8" }}>
+                        {item.label}
+                      </div>
+                      <div className="flex items-end gap-1">
+                        <span
+                          className="text-lg font-mono font-black"
+                          style={{ color: "#f0f4ff" }}
+                        >
+                          {item.baseline + item.delta}{item.unit}
+                        </span>
+                      </div>
+                      <div
+                        className="flex items-center gap-1 text-[9px] font-mono mt-1"
+                        style={{
+                          color: item.delta === 0 ? "#4a6080" : isWorse ? "#fca5a5" : "#6ee7b7",
+                        }}
+                      >
+                        {item.delta > 0 ? (
+                          <TrendingUp size={10} />
+                        ) : item.delta < 0 ? (
+                          <TrendingDown size={10} />
+                        ) : null}
+                        {item.delta > 0 ? "+" : ""}{item.delta}{item.unit} vs baseline
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+
+              {/* Comparison chart */}
+              <div
+                className="rounded-xl p-4 shadow-2xl"
+                style={{ background: "rgba(12,19,34,0.9)", border: "1px solid #1a2640", backdropFilter: "blur(12px)" }}
+              >
+                <h3 className="text-xs font-mono tracking-widest text-white mb-3 uppercase">
+                  Impact Comparison
+                </h3>
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={chartData} margin={{ top: 5, right: 0, bottom: 5, left: -25 }}>
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fill: "#4a6080", fontSize: 9, fontFamily: "JetBrains Mono" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fill: "#4a6080", fontSize: 9, fontFamily: "JetBrains Mono" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#0c1322",
+                        border: "1px solid #1a2640",
+                        borderRadius: 8,
+                        color: "#f0f4ff",
+                        fontFamily: "JetBrains Mono",
+                        fontSize: 10,
+                      }}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 9, fontFamily: "JetBrains Mono", color: "#4a6080" }}
+                    />
+                    <Bar dataKey="baseline" name="Baseline" fill="rgba(6,182,212,0.5)" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="scenario" name="Scenario" fill="rgba(239,68,68,0.6)" radius={[2, 2, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Save toast */}

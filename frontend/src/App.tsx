@@ -584,7 +584,7 @@ export default function App() {
               />
             )}
             {activeView === "rescue" && <RescueView />}
-            {activeView === "scenarios" && <ScenariosView />}
+            {activeView === "scenarios" && <ScenariosView activeCity={activeCity} cityDataset={cityDataset} />}
             {activeView === "replay" && <ReplayView />}
             {activeView === "health" && <SystemHealthView />}
           </div>
