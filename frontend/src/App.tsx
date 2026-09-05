@@ -24,6 +24,7 @@ import { alerts, roads, kpiData } from "./mockData";
 import type { Alert } from "./mockData";
 import { PRESET_CITIES, generatePresetCityData } from "./services/cityDataGenerator";
 import type { CityPreset, CityFloodDataset } from "./services/cityDataGenerator";
+import { DispatchProvider } from "./context/DispatchContext";
 
 // Views
 import OverviewView from "./views/OverviewView";
@@ -323,7 +324,8 @@ export default function App() {
     d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden" style={{ background: "#07111e" }}>
+    <DispatchProvider>
+      <div className="h-screen w-screen flex flex-col overflow-hidden" style={{ background: "#07111e" }}>
       {/* TOP COMMAND BAR */}
       <div
         className="flex-shrink-0 flex items-center px-4 py-2 gap-4"
@@ -728,6 +730,6 @@ export default function App() {
           </div>
         </div>
       </div>
-    </div>
+    </DispatchProvider>
   );
 }

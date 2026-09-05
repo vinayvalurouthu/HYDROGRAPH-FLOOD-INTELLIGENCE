@@ -35,6 +35,7 @@ function getStatusConfig(status?: string) {
 }
 
 import type { CityFloodDataset, CityPreset } from "../services/cityDataGenerator";
+import { useDispatch } from "../context/DispatchContext";
 
 interface DrainageViewProps {
   cityDataset?: CityFloodDataset | null;
@@ -42,6 +43,7 @@ interface DrainageViewProps {
 }
 
 export default function DrainageView({ cityDataset, activeCity }: DrainageViewProps) {
+  const { requestInspection } = useDispatch();
   const [nodes, setNodes] = useState<DrainageNode[]>(
     cityDataset?.drainageNodes || drainageNodes
   );
@@ -66,12 +68,14 @@ export default function DrainageView({ cityDataset, activeCity }: DrainageViewPr
     }
   }, [cityDataset, activeCity?.id]);
 
+  const activeSelected = selected || nodes[0] || drainageNodes[0];
+
   const handleInspection = async (id: string) => {
     setLoadingId(id);
     try {
-      await requestFieldInspection(id);
+      await requestInspection(id, activeSelected.name, activeSelected.status);
       setInspectionSent((p) => new Set(p).add(id));
-      setDispatchToast(`🚨 DISPATCH ALERT BROADCAST: Clearance Unit assigned to junction ${id} (INSP-${id})`);
+      setDispatchToast(`🚨 DISPATCH ALERT BROADCAST: Clearance Unit assigned to junction ${activeSelected.name} (${id})`);
       setTimeout(() => setDispatchToast(null), 6000);
     } finally {
       setLoadingId(null);

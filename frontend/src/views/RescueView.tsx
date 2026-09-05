@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { rescueTeams as initialRescueTeams, sosIncidents as initialSOS } from "../mockData";
 import type { RescueTeam, SOSIncident } from "../mockData";
 import { MapPin, Clock, Navigation, AlertTriangle, CheckCircle, Shield, Truck } from "lucide-react";
-import { getRescueTeams, getSOSIncidents } from "../services/api";
+import { useDispatch } from "../context/DispatchContext";
 
 const statusConfig = {
   AVAILABLE: { color: "#10b981", bg: "rgba(16,185,129,0.1)", label: "AVAILABLE" },
@@ -17,33 +16,23 @@ function getStatusConfig(status?: string) {
 }
 
 export default function RescueView() {
-  const [teams, setTeams] = useState<RescueTeam[]>(initialRescueTeams);
-  const [incidents, setIncidents] = useState<SOSIncident[]>(initialSOS);
-  const [selected, setSelected] = useState<RescueTeam>(initialRescueTeams[0]);
+  const { rescueTeams: teams, sosIncidents: incidents, latestDispatchAlert, selectedTeamId, setSelectedTeamId } = useDispatch();
+  const [selected, setSelected] = useState<RescueTeam>(teams[0]);
   const [routeCompromised, setRouteCompromised] = useState(false);
 
   useEffect(() => {
-    const loadData = () => {
-      Promise.all([getRescueTeams(), getSOSIncidents()]).then(([tData, sData]) => {
-        if (tData && tData.length > 0) {
-          setTeams(tData);
-          setSelected((prev) => tData.find((t) => t.id === prev.id) || tData[0]);
-        }
-        if (sData && sData.length > 0) {
-          setIncidents(sData);
-        }
-      });
-    };
+    if (selectedTeamId) {
+      const teamToSelect = teams.find((t) => t.id === selectedTeamId);
+      if (teamToSelect) {
+        setSelected(teamToSelect);
+      }
+    }
+  }, [selectedTeamId, teams]);
 
-    loadData();
-    const interval = setInterval(loadData, 3000);
-    return () => clearInterval(interval);
-  }, []);
+  const activeSelected = (selectedTeamId ? teams.find((t) => t.id === selectedTeamId) : selected) || selected || teams[0];
+  const activeCfg = getStatusConfig(activeSelected?.status);
 
-  const activeSelected = selected || teams[0] || initialRescueTeams[0];
-  const activeCfg = getStatusConfig(activeSelected.status);
-
-  const assignedSOS = activeSelected.assignedSOS
+  const assignedSOS = activeSelected?.assignedSOS
     ? incidents.find((s) => s.id === activeSelected.assignedSOS)
     : null;
 
@@ -75,13 +64,16 @@ export default function RescueView() {
         <div className="p-3 space-y-2">
           {teams.map((team) => {
             const cfg = getStatusConfig(team.status);
-            const isSelected = activeSelected.id === team.id;
+            const isSelected = activeSelected?.id === team.id;
             const isDrainageDispatch =
-              team.id.startsWith("RT-N-") || team.name.includes("Drainage Clearance");
+              team.id.startsWith("RT-") || team.name.includes("Drainage Clearance");
             return (
               <button
                 key={team.id}
-                onClick={() => setSelected(team)}
+                onClick={() => {
+                  setSelected(team);
+                  setSelectedTeamId(team.id);
+                }}
                 className="w-full text-left rounded-xl p-3 transition-all"
                 style={{
                   background: isSelected
@@ -147,7 +139,7 @@ export default function RescueView() {
       {/* Detail */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
         {/* Route compromised warning */}
-        {routeCompromised && (activeSelected.status || "").toUpperCase() === "EN_ROUTE" && (
+        {routeCompromised && (activeSelected?.status || "").toUpperCase() === "EN_ROUTE" && (
           <div
             className="rounded-xl p-4 flex items-start gap-3 animate-slide-up animate-alert-critical"
             style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.4)" }}
@@ -171,6 +163,55 @@ export default function RescueView() {
 
         {/* Single Alert Banner at Top when an inspection request arrives */}
         {(() => {
+          // If we have a latest global dispatch alert
+          if (latestDispatchAlert) {
+            const dispatchedTeam = teams.find(
+              (t) => t.id === latestDispatchAlert.teamId || t.assignedSOS === `INSP-${latestDispatchAlert.nodeId}`
+            );
+            return (
+              <div
+                key={latestDispatchAlert.id}
+                className="rounded-xl p-3.5 flex items-center justify-between gap-3 animate-slide-up"
+                style={{
+                  background: "rgba(6,182,212,0.1)",
+                  border: "1px solid rgba(6,182,212,0.4)",
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-cyan-500/20 border border-cyan-500/40">
+                    <Truck className="text-cyan-400 animate-pulse" size={16} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-cyan-400">
+                        🚨 {latestDispatchAlert.title}
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        NEW DISPATCH
+                      </span>
+                    </div>
+                    <div className="text-xs font-semibold text-white mt-0.5">
+                      {latestDispatchAlert.message}
+                    </div>
+                  </div>
+                </div>
+                {dispatchedTeam && (
+                  <button
+                    onClick={() => {
+                      setSelected(dispatchedTeam);
+                      setSelectedTeamId(dispatchedTeam.id);
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-500 transition-all flex items-center gap-1 flex-shrink-0"
+                  >
+                    <Navigation size={12} />
+                    FOCUS TEAM
+                  </button>
+                )}
+              </div>
+            );
+          }
+
+          // Fallback to latest INSP- in incidents
           const inspList = incidents.filter((s) => s.id.startsWith("INSP-"));
           if (inspList.length === 0) return null;
           const latestInsp = inspList[0];
@@ -206,7 +247,10 @@ export default function RescueView() {
               </div>
               {dispatchedTeamForLatest && (
                 <button
-                  onClick={() => setSelected(dispatchedTeamForLatest)}
+                  onClick={() => {
+                    setSelected(dispatchedTeamForLatest);
+                    setSelectedTeamId(dispatchedTeamForLatest.id);
+                  }}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-500 transition-all flex items-center gap-1 flex-shrink-0"
                 >
                   <Navigation size={12} />
