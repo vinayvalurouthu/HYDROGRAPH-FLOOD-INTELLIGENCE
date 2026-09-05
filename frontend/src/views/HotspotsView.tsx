@@ -155,9 +155,11 @@ const AUTO_REFRESH_MS = 30000; // 30s auto-refresh
 export default function HotspotsView({
   onNavigate,
   cityDataset,
+  onReportIssue,
 }: {
   onNavigate: (view: string, roadId?: string) => void;
   cityDataset: CityFloodDataset | null;
+  onReportIssue?: (roadId: string, details: string) => void;
 }) {
   const [data, setData] = useState<HotspotListResponse | null>(null);
   const [summary, setSummary] = useState<HotspotSummary | null>(null);
@@ -832,7 +834,15 @@ export default function HotspotsView({
           >
             SIMULATE
           </button>
-          <button className="px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5 transition-colors" style={{ border: "1px solid #1a2640", color: "#8da0b8" }}>
+          <button
+            onClick={() => {
+              if (onReportIssue && selected) {
+                onReportIssue(selected.id, `Manual issue reported for ${selected.name} by operator.`);
+              }
+            }}
+            className="px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5 transition-colors"
+            style={{ border: "1px solid #1a2640", color: "#8da0b8" }}
+          >
             REPORT ISSUE
           </button>
           <button

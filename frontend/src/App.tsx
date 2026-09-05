@@ -316,6 +316,19 @@ export default function App() {
     setLocalAlerts((p) => p.map((a) => (a.id === id ? { ...a, read: true } : a)));
   };
 
+  const handleReportIssue = (roadId: string, details: string) => {
+    const newAlert: Alert = {
+      id: `a${Date.now()}`,
+      type: "WARNING",
+      title: `Field Report — ${roadId}`,
+      message: details,
+      time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+      read: false,
+      roadId: roadId,
+    };
+    setLocalAlerts((prev) => [newAlert, ...prev]);
+  };
+
   const unreadCount = localAlerts.filter((a) => !a.read).length;
   const criticalAlerts = localAlerts.filter((a) => a.type === "CRITICAL" && !a.read);
 
@@ -548,7 +561,11 @@ export default function App() {
               />
             )}
             {activeView === "hotspots" && (
-              <HotspotsView onNavigate={handleNavigate} cityDataset={cityDataset} />
+              <HotspotsView
+                onNavigate={handleNavigate}
+                cityDataset={cityDataset}
+                onReportIssue={handleReportIssue}
+              />
             )}
             {activeView === "drainage" && (
               <DrainageView cityDataset={cityDataset} activeCity={activeCity} />
