@@ -29,6 +29,11 @@ const statusConfig = {
   CRITICAL: { color: "#ef4444", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.35)" },
 };
 
+function getStatusConfig(status?: string) {
+  const normalized = (status || "NORMAL").toUpperCase() as keyof typeof statusConfig;
+  return statusConfig[normalized] || statusConfig.NORMAL;
+}
+
 export default function DrainageView() {
   const [nodes, setNodes] = useState<DrainageNode[]>(drainageNodes);
   const [selected, setSelected] = useState<DrainageNode>(drainageNodes[0]);
@@ -54,6 +59,8 @@ export default function DrainageView() {
     }
   };
 
+  const activeSelected = selected || nodes[0] || drainageNodes[0];
+  const selectedCfg = getStatusConfig(activeSelected.status);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -72,7 +79,7 @@ export default function DrainageView() {
                   style={{ background: statusConfig[s].color }}
                 />
                 <span className="text-[10px] font-mono" style={{ color: "#4a6080" }}>
-                  {nodes.filter((n) => n.status === s).length} {s}
+                  {nodes.filter((n) => (n.status || "").toUpperCase() === s).length} {s}
                 </span>
               </div>
             ))}
@@ -81,8 +88,8 @@ export default function DrainageView() {
 
         <div className="p-3 space-y-2">
           {nodes.map((node) => {
-            const cfg = statusConfig[node.status];
-            const isSelected = selected.id === node.id;
+            const cfg = getStatusConfig(node.status);
+            const isSelected = activeSelected.id === node.id;
             return (
               <button
                 key={node.id}
@@ -123,21 +130,21 @@ export default function DrainageView() {
         <div
           className="rounded-xl p-4 animate-slide-up"
           style={{
-            background: statusConfig[selected.status].bg,
-            border: `1px solid ${statusConfig[selected.status].border}`,
+            background: selectedCfg.bg,
+            border: `1px solid ${selectedCfg.border}`,
           }}
         >
           <div className="flex items-start justify-between mb-2">
             <div>
-              <h2 className="text-xl font-mono font-black text-white">{selected.name}</h2>
+              <h2 className="text-xl font-mono font-black text-white">{activeSelected.name}</h2>
               <span
                 className="text-sm font-mono font-bold px-3 py-1 rounded-full mt-1 inline-block"
                 style={{
-                  background: statusConfig[selected.status].color,
+                  background: selectedCfg.color,
                   color: "white",
                 }}
               >
-                {selected.status}
+                {activeSelected.status}
               </span>
             </div>
             {/* Confidence ring */}
@@ -145,15 +152,15 @@ export default function DrainageView() {
               <div
                 className="w-14 h-14 rounded-full flex items-center justify-center relative"
                 style={{
-                  background: `conic-gradient(${statusConfig[selected.status].color} ${selected.confidencePct * 3.6}deg, #1a2640 0deg)`,
+                  background: `conic-gradient(${selectedCfg.color} ${(activeSelected.confidencePct || 0) * 3.6}deg, #1a2640 0deg)`,
                 }}
               >
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center"
                   style={{ background: "#0c1322" }}
                 >
-                  <span className="text-xs font-mono font-bold" style={{ color: statusConfig[selected.status].color }}>
-                    {selected.confidencePct}%
+                  <span className="text-xs font-mono font-bold" style={{ color: selectedCfg.color }}>
+                    {activeSelected.confidencePct}%
                   </span>
                 </div>
               </div>
@@ -174,12 +181,12 @@ export default function DrainageView() {
               Flow Metrics
             </h3>
             {[
-              { label: "Utilization", value: `${selected.utilizationPct}%` },
-              { label: "Design Capacity", value: `${selected.capacityLs} L/s` },
-              { label: "Current Est. Flow", value: `${selected.flowLs} L/s` },
+              { label: "Utilization", value: `${activeSelected.utilizationPct}%` },
+              { label: "Design Capacity", value: `${activeSelected.capacityLs} L/s` },
+              { label: "Current Est. Flow", value: `${activeSelected.flowLs} L/s` },
               {
                 label: "Headroom",
-                value: `${selected.capacityLs - selected.flowLs} L/s`,
+                value: `${activeSelected.capacityLs - activeSelected.flowLs} L/s`,
               },
             ].map((r) => (
               <div
@@ -195,13 +202,13 @@ export default function DrainageView() {
             ))}
 
             <div className="mt-3">
-              <UtilizationBar pct={selected.utilizationPct} status={selected.status} />
+              <UtilizationBar pct={activeSelected.utilizationPct} status={activeSelected.status} />
             </div>
           </div>
 
           {/* Anomaly + action */}
           <div className="space-y-3">
-            {selected.anomaly ? (
+            {activeSelected.anomaly ? (
               <div
                 className="rounded-xl p-4"
                 style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.3)" }}
@@ -212,7 +219,7 @@ export default function DrainageView() {
                     Anomaly Detected
                   </h3>
                 </div>
-                <p className="text-sm text-white mb-2">{selected.anomaly}</p>
+                <p className="text-sm text-white mb-2">{activeSelected.anomaly}</p>
                 <p className="text-[11px]" style={{ color: "#9a6e00" }}>
                   Note: This is an inferred condition based on flow data, not a confirmed physical blockage. Field inspection required to confirm.
                 </p>
@@ -241,11 +248,11 @@ export default function DrainageView() {
               <h3 className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "#4a6080" }}>
                 Recommended Action
               </h3>
-              {selected.status === "CRITICAL" ? (
+              {activeSelected.status === "CRITICAL" ? (
                 <p className="text-sm text-white mb-3">
                   Immediate field inspection. Alert maintenance team. Consider upstream road closure.
                 </p>
-              ) : selected.status === "STRESSED" ? (
+              ) : activeSelected.status === "STRESSED" ? (
                 <p className="text-sm text-white mb-3">
                   Schedule field inspection within 30 min. Monitor flow rate closely.
                 </p>
@@ -255,7 +262,7 @@ export default function DrainageView() {
                 </p>
               )}
 
-              {inspectionSent.has(selected.id) ? (
+              {inspectionSent.has(activeSelected.id) ? (
                 <div
                   className="flex items-center gap-2 px-3 py-2 rounded-lg"
                   style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)" }}
@@ -267,17 +274,17 @@ export default function DrainageView() {
                 </div>
               ) : (
                 <button
-                  disabled={loadingId === selected.id}
-                  onClick={() => handleInspection(selected.id)}
+                  disabled={loadingId === activeSelected.id}
+                  onClick={() => handleInspection(activeSelected.id)}
                   className="w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50"
                   style={{ background: "#06b6d4" }}
                 >
-                  {loadingId === selected.id ? (
+                  {loadingId === activeSelected.id ? (
                     <Loader2 size={14} className="animate-spin" />
                   ) : (
                     <Wrench size={14} />
                   )}
-                  {loadingId === selected.id ? "DISPATCHING..." : "REQUEST FIELD INSPECTION"}
+                  {loadingId === activeSelected.id ? "DISPATCHING..." : "REQUEST FIELD INSPECTION"}
                 </button>
               )}
             </div>
@@ -302,16 +309,17 @@ export default function DrainageView() {
               <line x1="300" y1="140" x2="480" y2="70" stroke="#1a2640" strokeWidth="2" strokeDasharray="4 4" />
 
               {nodes.map((node, i) => {
-                const positions = [
+                const defaultPositions = [
                   { x: 350, y: 90 },
                   { x: 250, y: 60 },
                   { x: 480, y: 70 },
                   { x: 300, y: 140 },
                   { x: 120, y: 90 },
+                  { x: 410, y: 130 },
                 ];
-                const pos = positions[i];
-                const cfg = statusConfig[node.status];
-                const isSelected = selected.id === node.id;
+                const pos = defaultPositions[i] || { x: 100 + ((i * 75) % 450), y: 50 + ((i * 35) % 90) };
+                const cfg = getStatusConfig(node.status);
+                const isSelected = activeSelected.id === node.id;
                 return (
                   <g
                     key={node.id}
@@ -368,3 +376,4 @@ export default function DrainageView() {
     </div>
   );
 }
+

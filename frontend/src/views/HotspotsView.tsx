@@ -675,7 +675,7 @@ export default function HotspotsView({
                 <YAxis hide />
                 <Tooltip
                   contentStyle={{ background: "#0c1322", border: "1px solid #1a2640", borderRadius: 8, color: "#f0f4ff", fontFamily: "JetBrains Mono", fontSize: 10 }}
-                  formatter={(v: any) => [`${v} cm`, "Depth"]}
+                  formatter={(value: any) => [`${value ?? 0} cm`, "Depth"]}
                 />
                 <ReferenceLine
                   y={30}

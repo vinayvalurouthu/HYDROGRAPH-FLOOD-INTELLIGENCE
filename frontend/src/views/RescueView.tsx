@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { rescueTeams, sosIncidents } from "../mockData";
-import type { RescueTeam } from "../mockData";
+import { useState, useEffect } from "react";
+import { rescueTeams as initialRescueTeams, sosIncidents as initialSOS } from "../mockData";
+import type { RescueTeam, SOSIncident } from "../mockData";
 import { MapPin, Clock, Navigation, AlertTriangle, CheckCircle, Shield, Truck } from "lucide-react";
+import { getRescueTeams, getSOSIncidents } from "../services/api";
 
 const statusConfig = {
   AVAILABLE: { color: "#10b981", bg: "rgba(16,185,129,0.1)", label: "AVAILABLE" },
@@ -10,12 +11,40 @@ const statusConfig = {
   RETURNING: { color: "#8b5cf6", bg: "rgba(139,92,246,0.1)", label: "RETURNING" },
 };
 
+function getStatusConfig(status?: string) {
+  const normalized = (status || "AVAILABLE").toUpperCase() as keyof typeof statusConfig;
+  return statusConfig[normalized] || statusConfig.AVAILABLE;
+}
+
 export default function RescueView() {
-  const [selected, setSelected] = useState<RescueTeam>(rescueTeams[0]);
+  const [teams, setTeams] = useState<RescueTeam[]>(initialRescueTeams);
+  const [incidents, setIncidents] = useState<SOSIncident[]>(initialSOS);
+  const [selected, setSelected] = useState<RescueTeam>(initialRescueTeams[0]);
   const [routeCompromised, setRouteCompromised] = useState(false);
 
-  const assignedSOS = selected.assignedSOS
-    ? sosIncidents.find((s) => s.id === selected.assignedSOS)
+  useEffect(() => {
+    const loadData = () => {
+      Promise.all([getRescueTeams(), getSOSIncidents()]).then(([tData, sData]) => {
+        if (tData && tData.length > 0) {
+          setTeams(tData);
+          setSelected((prev) => tData.find((t) => t.id === prev.id) || tData[0]);
+        }
+        if (sData && sData.length > 0) {
+          setIncidents(sData);
+        }
+      });
+    };
+
+    loadData();
+    const interval = setInterval(loadData, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const activeSelected = selected || teams[0] || initialRescueTeams[0];
+  const activeCfg = getStatusConfig(activeSelected.status);
+
+  const assignedSOS = activeSelected.assignedSOS
+    ? incidents.find((s) => s.id === activeSelected.assignedSOS)
     : null;
 
   return (
@@ -31,22 +60,22 @@ export default function RescueView() {
             <div className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full" style={{ background: "#10b981" }} />
               <span className="text-[10px] font-mono" style={{ color: "#4a6080" }}>
-                {rescueTeams.filter((t) => t.status === "AVAILABLE").length} available
+                {teams.filter((t) => (t.status || "").toUpperCase() === "AVAILABLE").length} available
               </span>
             </div>
             <div className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full animate-blink" style={{ background: "#06b6d4" }} />
               <span className="text-[10px] font-mono" style={{ color: "#4a6080" }}>
-                {rescueTeams.filter((t) => t.status === "EN_ROUTE").length} en route
+                {teams.filter((t) => (t.status || "").toUpperCase() === "EN_ROUTE").length} en route
               </span>
             </div>
           </div>
         </div>
 
         <div className="p-3 space-y-2">
-          {rescueTeams.map((team) => {
-            const cfg = statusConfig[team.status];
-            const isSelected = selected.id === team.id;
+          {teams.map((team) => {
+            const cfg = getStatusConfig(team.status);
+            const isSelected = activeSelected.id === team.id;
             return (
               <button
                 key={team.id}
@@ -77,7 +106,7 @@ export default function RescueView() {
                 <div className="text-[10px] ml-9" style={{ color: "#4a6080" }}>
                   {team.vehicle} · Cap: {team.capacity}
                 </div>
-                {team.status === "EN_ROUTE" && (
+                {(team.status || "").toUpperCase() === "EN_ROUTE" && (
                   <div className="flex items-center gap-3 mt-1.5 ml-9 text-[10px] font-mono">
                     <span style={{ color: "#22d3ee" }}>ETA {team.etaMin}min</span>
                     <span style={{ color: "#4a6080" }}>{team.distanceKm}km</span>
@@ -92,10 +121,11 @@ export default function RescueView() {
         </div>
       </div>
 
+
       {/* Detail */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
         {/* Route compromised warning */}
-        {routeCompromised && selected.status === "EN_ROUTE" && (
+        {routeCompromised && (activeSelected.status || "").toUpperCase() === "EN_ROUTE" && (
           <div
             className="rounded-xl p-4 flex items-start gap-3 animate-slide-up animate-alert-critical"
             style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.4)" }}
@@ -121,40 +151,40 @@ export default function RescueView() {
         <div
           className="rounded-xl p-4 animate-slide-up"
           style={{
-            background: statusConfig[selected.status].bg,
-            border: `1px solid ${statusConfig[selected.status].color}50`,
+            background: activeCfg.bg,
+            border: `1px solid ${activeCfg.color}50`,
           }}
         >
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-2xl font-mono font-black text-white">{selected.name}</h2>
+              <h2 className="text-2xl font-mono font-black text-white">{activeSelected.name}</h2>
               <div className="flex items-center gap-2 mt-1">
                 <span
                   className="text-sm font-mono font-bold px-3 py-1 rounded-full"
-                  style={{ background: statusConfig[selected.status].color, color: "white" }}
+                  style={{ background: activeCfg.color, color: "white" }}
                 >
-                  {statusConfig[selected.status].label}
+                  {activeCfg.label}
                 </span>
                 <span className="text-xs" style={{ color: "#8da0b8" }}>
-                  {selected.vehicle}
+                  {activeSelected.vehicle}
                 </span>
               </div>
             </div>
             <div className="text-right">
               <div className="text-[10px] font-mono" style={{ color: "#4a6080" }}>CAPACITY</div>
-              <div className="text-3xl font-mono font-black" style={{ color: statusConfig[selected.status].color }}>
-                {selected.capacity}
+              <div className="text-3xl font-mono font-black" style={{ color: activeCfg.color }}>
+                {activeSelected.capacity}
               </div>
               <div className="text-[10px]" style={{ color: "#4a6080" }}>persons</div>
             </div>
           </div>
 
-          {selected.status === "EN_ROUTE" && (
+          {(activeSelected.status || "").toUpperCase() === "EN_ROUTE" && (
             <div className="grid grid-cols-3 gap-3 mt-3">
               {[
-                { label: "Distance", value: `${selected.distanceKm} km`, icon: MapPin },
-                { label: "ETA", value: `${selected.etaMin} min`, icon: Clock },
-                { label: "Route Safety", value: selected.routeSafety, icon: Shield },
+                { label: "Distance", value: `${activeSelected.distanceKm} km`, icon: MapPin },
+                { label: "ETA", value: `${activeSelected.etaMin} min`, icon: Clock },
+                { label: "Route Safety", value: activeSelected.routeSafety, icon: Shield },
               ].map((s) => (
                 <div
                   key={s.label}
@@ -169,9 +199,9 @@ export default function RescueView() {
                       style={{
                         color:
                           s.label === "Route Safety"
-                            ? selected.routeSafety === "SAFE"
+                            ? activeSelected.routeSafety === "SAFE"
                               ? "#10b981"
-                              : selected.routeSafety === "HIGH"
+                              : activeSelected.routeSafety === "HIGH"
                                 ? "#f59e0b"
                                 : "#ef4444"
                             : "#f0f4ff",

@@ -7,12 +7,13 @@ Endpoints:
   GET /api/v1/drainage/nodes/{id} → Single drainage junction telemetry
 """
 
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import DrainageNode
+from models import DrainageNode, SOSIncident, RescueTeam, Alert
 from schemas import (
     DrainageNodeOut,
     DrainageStatusOut,
@@ -110,11 +111,78 @@ async def request_field_inspection(node_id: str, db: AsyncSession = Depends(get_
     if not node:
         raise HTTPException(status_code=404, detail=f"Drainage node {node_id} not found")
 
+    sos_id = f"INSP-{node.id}"
+    now_time = datetime.utcnow().strftime("%H:%M")
+
+    # 1. Create or update an emergency dispatch incident for Rescue Teams
+    existing_sos = await db.execute(select(SOSIncident).where(SOSIncident.id == sos_id))
+    sos = existing_sos.scalar_one_or_none()
+    if not sos:
+        sos = SOSIncident(
+            id=sos_id,
+            priority="CRITICAL" if node.status == "CRITICAL" else "HIGH",
+            location=f"Drainage Junction {node.name}",
+            lat=node.lat,
+            lng=node.lng,
+            people=0,
+            children=0,
+            elderly=0,
+            medical=False,
+            water_depth_m=round(node.flow_ls / 100.0, 2),
+            waiting_min=1,
+            status="ASSIGNED",
+            flood_risk=node.status if node.status in ["LOW", "MODERATE", "HIGH", "SEVERE"] else "HIGH",
+            assigned_team="RT-04",
+            timestamps=[
+                {"status": "Drainage Inspection Dispatched", "time": now_time},
+                {"status": "Clearance Team En Route", "time": now_time},
+            ],
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(sos)
+    else:
+        sos.status = "ASSIGNED"
+        sos.assigned_team = "RT-04"
+        sos.updated_at = datetime.utcnow()
+
+    # 2. Dispatch available or dedicated rescue team (RT-04 / RT-01)
+    team_result = await db.execute(
+        select(RescueTeam).where(
+            (RescueTeam.id == "RT-04") | (RescueTeam.status == "AVAILABLE")
+        ).limit(1)
+    )
+    team = team_result.scalar_one_or_none()
+    if team:
+        team.status = "EN_ROUTE"
+        team.assigned_sos = sos_id
+        team.eta_min = 12
+        team.updated_at = datetime.utcnow()
+
+    # 3. Raise immediate operational alert
+    import uuid
+    alert_id = f"ALT-{uuid.uuid4().hex[:6]}"
+    alert = Alert(
+        id=alert_id,
+        type="CRITICAL" if node.status == "CRITICAL" else "WARNING",
+        title=f"URGENT DISPATCH: {node.name}",
+        message=f"Rescue & Clearance Unit assigned to drainage junction {node.id}. Operational state: {node.status}.",
+        time="Just now",
+        read=False,
+        created_at=datetime.utcnow(),
+    )
+    db.add(alert)
+
+    await db.commit()
+
     return {
         "status": "success",
         "node_id": node.id,
         "node_name": node.name,
         "action": "FIELD_INSPECTION_DISPATCHED",
+        "assigned_sos": sos_id,
+        "assigned_team": team.id if team else "RT-04",
         "message": f"Field inspection team dispatched for junction {node.name} ({node.id}). Priority route assigned.",
     }
+
 
