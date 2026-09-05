@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 
-# Force SQLite for now — the .env has a PostgreSQL URL for future use
-_DB_URL = "sqlite+aiosqlite:///./hydrograph.db"
+# Force SQLite for now — absolute path to hydrograph.db in backend directory
+_DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "hydrograph.db"))
+_DB_URL = f"sqlite+aiosqlite:///{_DB_PATH}"
+
 
 
 class Settings(BaseSettings):

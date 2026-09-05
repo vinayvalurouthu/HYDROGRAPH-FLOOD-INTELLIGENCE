@@ -81,8 +81,9 @@ class DrainageNode(Base):
 
     __tablename__ = "drainage_nodes"
 
-    id: Mapped[str] = mapped_column(String(20), primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    city_id: Mapped[str | None] = mapped_column(String(50), nullable=True, default="patna")
 
     # Geographic and schematic coordinates
     lat: Mapped[float] = mapped_column(Float, default=0.0)

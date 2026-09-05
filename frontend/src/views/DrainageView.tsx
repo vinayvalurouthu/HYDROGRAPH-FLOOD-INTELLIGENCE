@@ -34,26 +34,45 @@ function getStatusConfig(status?: string) {
   return statusConfig[normalized] || statusConfig.NORMAL;
 }
 
-export default function DrainageView() {
-  const [nodes, setNodes] = useState<DrainageNode[]>(drainageNodes);
-  const [selected, setSelected] = useState<DrainageNode>(drainageNodes[0]);
+import type { CityFloodDataset, CityPreset } from "../services/cityDataGenerator";
+
+interface DrainageViewProps {
+  cityDataset?: CityFloodDataset | null;
+  activeCity?: CityPreset;
+}
+
+export default function DrainageView({ cityDataset, activeCity }: DrainageViewProps) {
+  const [nodes, setNodes] = useState<DrainageNode[]>(
+    cityDataset?.drainageNodes || drainageNodes
+  );
+  const [selected, setSelected] = useState<DrainageNode>(
+    cityDataset?.drainageNodes[0] || drainageNodes[0]
+  );
   const [inspectionSent, setInspectionSent] = useState<Set<string>>(new Set());
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [dispatchToast, setDispatchToast] = useState<string | null>(null);
 
   useEffect(() => {
-    getDrainageStatus().then((res) => {
-      if (res && res.nodes && res.nodes.length > 0) {
-        setNodes(res.nodes);
-        setSelected(res.nodes[0]);
-      }
-    });
-  }, []);
+    if (cityDataset && cityDataset.drainageNodes && cityDataset.drainageNodes.length > 0) {
+      setNodes(cityDataset.drainageNodes);
+      setSelected(cityDataset.drainageNodes[0]);
+    } else {
+      getDrainageStatus(activeCity?.id).then((res) => {
+        if (res && res.nodes && res.nodes.length > 0) {
+          setNodes(res.nodes);
+          setSelected(res.nodes[0]);
+        }
+      });
+    }
+  }, [cityDataset, activeCity?.id]);
 
   const handleInspection = async (id: string) => {
     setLoadingId(id);
     try {
       await requestFieldInspection(id);
       setInspectionSent((p) => new Set(p).add(id));
+      setDispatchToast(`🚨 DISPATCH ALERT BROADCAST: Clearance Unit assigned to junction ${id} (INSP-${id})`);
+      setTimeout(() => setDispatchToast(null), 6000);
     } finally {
       setLoadingId(null);
     }
@@ -63,7 +82,26 @@ export default function DrainageView() {
   const selectedCfg = getStatusConfig(activeSelected.status);
 
   return (
-    <div className="h-full flex overflow-hidden">
+    <div className="h-full flex overflow-hidden relative">
+      {/* Toast Notification */}
+      {dispatchToast && (
+        <div
+          className="absolute top-4 right-6 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-down"
+          style={{
+            background: "#0c1322",
+            border: "1px solid #06b6d4",
+            boxShadow: "0 0 25px rgba(6,182,212,0.3)",
+          }}
+        >
+          <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center flex-shrink-0">
+            <Wrench className="text-cyan-400 animate-pulse" size={16} />
+          </div>
+          <div>
+            <div className="text-xs font-mono font-bold text-cyan-400">RESCUE TEAM ALERT BROADCAST</div>
+            <div className="text-xs font-semibold text-white mt-0.5">{dispatchToast}</div>
+          </div>
+        </div>
+      )}
       {/* Node list */}
       <div
         className="w-72 flex-shrink-0 border-r overflow-y-auto"

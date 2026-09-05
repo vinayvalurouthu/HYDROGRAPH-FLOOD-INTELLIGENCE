@@ -76,25 +76,47 @@ export default function RescueView() {
           {teams.map((team) => {
             const cfg = getStatusConfig(team.status);
             const isSelected = activeSelected.id === team.id;
+            const isDrainageDispatch =
+              team.id.startsWith("RT-N-") || team.name.includes("Drainage Clearance");
             return (
               <button
                 key={team.id}
                 onClick={() => setSelected(team)}
                 className="w-full text-left rounded-xl p-3 transition-all"
                 style={{
-                  background: isSelected ? cfg.bg : "rgba(12,19,34,0.5)",
-                  border: `1px solid ${isSelected ? cfg.color + "50" : "#1a2640"}`,
+                  background: isSelected
+                    ? cfg.bg
+                    : isDrainageDispatch
+                      ? "rgba(6,182,212,0.08)"
+                      : "rgba(12,19,34,0.5)",
+                  border: `1px solid ${
+                    isSelected
+                      ? cfg.color + "50"
+                      : isDrainageDispatch
+                        ? "rgba(6,182,212,0.4)"
+                        : "#1a2640"
+                  }`,
                 }}
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <div
                       className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: cfg.bg, border: `1px solid ${cfg.color}40` }}
+                      style={{
+                        background: isDrainageDispatch ? "rgba(6,182,212,0.2)" : cfg.bg,
+                        border: `1px solid ${isDrainageDispatch ? "#06b6d4" : cfg.color + "40"}`,
+                      }}
                     >
-                      <Truck size={12} style={{ color: cfg.color }} />
+                      <Truck size={12} style={{ color: isDrainageDispatch ? "#06b6d4" : cfg.color }} />
                     </div>
-                    <span className="text-xs font-mono font-bold text-white">{team.name}</span>
+                    <div>
+                      <span className="text-xs font-mono font-bold text-white block">{team.name}</span>
+                      {isDrainageDispatch && (
+                        <span className="text-[9px] font-mono font-bold text-cyan-400">
+                          NEW DISPATCH
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span
                     className="text-[10px] font-mono px-1.5 py-0.5 rounded"
@@ -146,6 +168,54 @@ export default function RescueView() {
             </button>
           </div>
         )}
+
+        {/* Single Alert Banner at Top when an inspection request arrives */}
+        {(() => {
+          const inspList = incidents.filter((s) => s.id.startsWith("INSP-"));
+          if (inspList.length === 0) return null;
+          const latestInsp = inspList[0];
+          const dispatchedTeamForLatest = teams.find(
+            (t) => t.assignedSOS === latestInsp.id || t.id === latestInsp.assignedTeam
+          );
+          return (
+            <div
+              key={latestInsp.id}
+              className="rounded-xl p-3.5 flex items-center justify-between gap-3 animate-slide-up"
+              style={{
+                background: "rgba(6,182,212,0.1)",
+                border: "1px solid rgba(6,182,212,0.4)",
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-cyan-500/20 border border-cyan-500/40">
+                  <Truck className="text-cyan-400 animate-pulse" size={16} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-cyan-400">
+                      🚨 URGENT FIELD INSPECTION REQUEST ARRIVED ({latestInsp.id})
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                      NEW DISPATCH
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-white mt-0.5">
+                    {latestInsp.location} — Clearance Team Added to Rescue List
+                  </div>
+                </div>
+              </div>
+              {dispatchedTeamForLatest && (
+                <button
+                  onClick={() => setSelected(dispatchedTeamForLatest)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-500 transition-all flex items-center gap-1 flex-shrink-0"
+                >
+                  <Navigation size={12} />
+                  FOCUS TEAM
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Team header */}
         <div

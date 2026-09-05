@@ -550,7 +550,9 @@ export default function App() {
             {activeView === "hotspots" && (
               <HotspotsView onNavigate={handleNavigate} cityDataset={cityDataset} />
             )}
-            {activeView === "drainage" && <DrainageView />}
+            {activeView === "drainage" && (
+              <DrainageView cityDataset={cityDataset} activeCity={activeCity} />
+            )}
             {activeView === "routing" && <RoutingView />}
             {activeView === "shelters" && <SheltersView />}
             {activeView === "sos" && (

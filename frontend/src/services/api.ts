@@ -17,6 +17,8 @@ import type {
   KPIData,
 } from "../mockData";
 
+import { PRESET_CITIES, generatePresetCityData } from "./cityDataGenerator";
+
 const API_BASE = "/api";
 
 async function fetchJSON<T>(url: string, options?: RequestInit, fallback?: T): Promise<T> {
@@ -346,16 +348,20 @@ export async function updateShelterOccupancy(shelterId: string, occupancy: numbe
 
 // ─── 5. Drainage ─────────────────────────────────────────────────────────────
 
-export async function getDrainageStatus() {
+export async function getDrainageStatus(cityId?: string) {
+  const qs = cityId ? `?city_id=${encodeURIComponent(cityId)}` : "";
+  const city = PRESET_CITIES.find((c) => c.id === cityId);
+  const fallbackNodes = city ? generatePresetCityData(city).drainageNodes : mock.drainageNodes;
+
   return fetchJSON(
-    `${API_BASE}/v1/drainage/status`,
+    `${API_BASE}/v1/drainage/status${qs}`,
     undefined,
     {
-      total_nodes: mock.drainageNodes.length,
-      critical_nodes: mock.drainageNodes.filter((n) => n.status === "CRITICAL").length,
-      stressed_nodes: mock.drainageNodes.filter((n) => n.status === "STRESSED").length,
+      total_nodes: fallbackNodes.length,
+      critical_nodes: fallbackNodes.filter((n) => n.status === "CRITICAL").length,
+      stressed_nodes: fallbackNodes.filter((n) => n.status === "STRESSED").length,
       avg_utilization_pct: 73.4,
-      nodes: mock.drainageNodes,
+      nodes: fallbackNodes,
     }
   );
 }
@@ -365,7 +371,7 @@ export async function getDrainageAnomalies() {
 }
 
 export async function requestFieldInspection(nodeId: string) {
-  return fetchJSON(
+  const res = await fetchJSON(
     `${API_BASE}/v1/drainage/nodes/${encodeURIComponent(nodeId)}/inspect`,
     { method: "POST" },
     {
@@ -375,7 +381,68 @@ export async function requestFieldInspection(nodeId: string) {
       message: `Field inspection team dispatched for junction ${nodeId} (local mode).`,
     }
   );
+
+  // Sync local mock data state for immediate cross-component reactivity
+  const node = mock.drainageNodes.find((n) => n.id === nodeId);
+  const nodeName = node ? node.name : nodeId;
+  const teamId = `RT-${nodeId}`;
+
+  let team = mock.rescueTeams.find((t) => t.id === teamId);
+  if (!team) {
+    const newTeam: RescueTeam = {
+      id: teamId,
+      name: `Drainage Clearance Unit (${nodeId})`,
+      status: "EN_ROUTE",
+      distanceKm: 2.1,
+      etaMin: 10,
+      vehicle: "Drainage Service Truck",
+      capacity: 4,
+      routeSafety: "SAFE",
+      assignedSOS: `INSP-${nodeId}`,
+    };
+    team = newTeam;
+    mock.rescueTeams.unshift(newTeam); // Add as new team at TOP of list
+  } else {
+    team.status = "EN_ROUTE";
+    team.assignedSOS = `INSP-${nodeId}`;
+  }
+
+  const existingSOS = mock.sosIncidents.find((s) => s.id === `INSP-${nodeId}`);
+  if (!existingSOS) {
+    mock.sosIncidents.unshift({
+      id: `INSP-${nodeId}`,
+      priority: node?.status === "CRITICAL" ? "CRITICAL" : "HIGH",
+      location: `Drainage Junction ${nodeName}`,
+      people: 0,
+      children: 0,
+      elderly: 0,
+      medical: false,
+      waterDepthM: Number(((node?.flowLs || 77) / 100).toFixed(2)),
+      waitingMin: 1,
+      status: "ASSIGNED",
+      floodRisk: node?.status === "CRITICAL" ? "SEVERE" : "HIGH",
+      lat: node?.lat || 25.606,
+      lng: node?.lng || 85.152,
+      timestamps: [
+        { status: "Drainage Inspection Dispatched", time: "Just now" },
+        { status: "Clearance Team En Route", time: "Just now" },
+      ],
+      assignedTeam: teamId,
+    });
+  }
+
+  mock.alerts.unshift({
+    id: `alt-${Date.now()}`,
+    type: "CRITICAL",
+    title: `URGENT DISPATCH: ${nodeName}`,
+    message: `Rescue & Clearance Unit assigned to junction ${nodeId}. Priority inspection en route.`,
+    time: "Just now",
+    read: false,
+  });
+
+  return res;
 }
+
 
 
 // ─── 6. Routing ──────────────────────────────────────────────────────────────
