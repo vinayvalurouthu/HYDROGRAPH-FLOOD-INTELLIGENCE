@@ -91,6 +91,9 @@ export interface Shelter {
   recommended?: boolean;
   lat: number;
   lng: number;
+  phone?: string;
+  contactOfficer?: string;
+  officerRole?: string;
 }
 
 export interface DrainageNode {
@@ -410,6 +413,9 @@ export const shelters: Shelter[] = [
     recommended: false,
     lat: 25.6200,
     lng: 85.1230,
+    phone: "+91 612 223 4567",
+    contactOfficer: "Capt. R. K. Varma",
+    officerRole: "Relief Camp In-Charge",
   },
   {
     id: "SH-02",
@@ -429,6 +435,9 @@ export const shelters: Shelter[] = [
     lastUpdated: "5 min ago",
     lat: 25.6160,
     lng: 85.1410,
+    phone: "+91 612 254 8901",
+    contactOfficer: "Dr. Sunita Prasad",
+    officerRole: "Civil Defense Officer",
   },
   {
     id: "SH-03",
@@ -449,6 +458,9 @@ export const shelters: Shelter[] = [
     recommended: true,
     lat: 25.5920,
     lng: 85.1580,
+    phone: "+91 612 278 3412",
+    contactOfficer: "Insp. Amit Kumar",
+    officerRole: "Shelter Commander",
   },
   {
     id: "SH-04",

@@ -78,6 +78,13 @@ export default function RoutingView({ activeCity, cityDataset, routingRequest }:
     setRouteResult(res);
     setMapLayout(layout);
     setCalculated(true);
+
+    // Directly start live turn-by-turn navigation mode when routingRequest is triggered
+    if (routingRequest && routingRequest.autoStartNav !== false) {
+      setIsNavigating(true);
+      setNavProgress(0);
+      setIsPaused(false);
+    }
   }, [routingRequest?.timestamp, activeCity?.name]);
 
   const handleCalculate = async (fromVal?: string, toVal?: string) => {
@@ -196,28 +203,144 @@ export default function RoutingView({ activeCity, cityDataset, routingRequest }:
   const remainingKm = Math.max(0.1, Number((activeOption?.distanceKm * (1 - navProgress)).toFixed(1)));
   const remainingEtaMin = Math.max(1, Math.round(activeOption?.eta * (1 - navProgress)));
 
+  // Next-Gen Tactical HUD state
+  const [networkMode, setNetworkMode] = useState<"CELLULAR" | "MESH">("CELLULAR");
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Convoy Planner State
+  const [isConvoyMode, setIsConvoyMode] = useState(false);
+  const [selectedConvoyVehicles, setSelectedConvoyVehicles] = useState<string[]>([
+    "Motorboat 03",
+    "Amphibious Truck A1",
+    "Medical Rig M2",
+  ]);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const toggleNetworkMode = () => {
+    const nextMode = networkMode === "CELLULAR" ? "MESH" : "CELLULAR";
+    setNetworkMode(nextMode);
+    triggerToast(
+      nextMode === "MESH"
+        ? "Network Fallback: Switched to V2X Ad-Hoc Mesh Network!"
+        : "Network Restored: Switched to Primary 5G Cellular Connection!"
+    );
+  };
+
   return (
-    <div className="h-full flex overflow-hidden relative">
+    <div className="h-full flex overflow-hidden relative font-sans select-none">
+      {/* Toast Notification Overlay */}
+      {toastMessage && (
+        <div
+          className="fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl text-xs font-mono font-bold text-white flex items-center gap-2 shadow-2xl animate-slide-down"
+          style={{ background: "#06b6d4", border: "1px solid rgba(255,255,255,0.2)" }}
+        >
+          <Radio size={14} className="text-amber-300 animate-pulse" /> {toastMessage}
+        </div>
+      )}
+
       {/* Side Panel Controls (Hidden during full-screen Navigation Mode) */}
       {!isNavigating && (
         <div
           className="w-80 flex-shrink-0 border-r flex flex-col overflow-y-auto"
           style={{ borderColor: "#1a2640" }}
         >
-          <div className="px-4 py-3" style={{ borderBottom: "1px solid #1a2640" }}>
+          <div className="px-4 py-3 flex flex-col gap-2" style={{ borderBottom: "1px solid #1a2640" }}>
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-white">FIND SAFE ROUTE</h2>
-              <span className="text-[9px] font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800/60 flex items-center gap-1">
-                <Compass size={10} />
-                {activeCity?.name || "Patna"}
-              </span>
+              {/* Mesh Network Fallback Indicator */}
+              <button
+                onClick={toggleNetworkMode}
+                className="px-2 py-1 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer hover:opacity-90"
+                style={{
+                  background: networkMode === "MESH" ? "rgba(245,158,11,0.15)" : "rgba(16,185,129,0.15)",
+                  border: `1px solid ${networkMode === "MESH" ? "rgba(245,158,11,0.4)" : "rgba(16,185,129,0.4)"}`,
+                  color: networkMode === "MESH" ? "#fde68a" : "#6ee7b7",
+                }}
+              >
+                {networkMode === "MESH" ? (
+                  <>
+                    <Radio size={10} className="text-amber-400 animate-pulse" />
+                    MESH (V2X ACTIVE)
+                  </>
+                ) : (
+                  <>
+                    <Compass size={10} className="text-emerald-400" />
+                    CELLULAR 5G
+                  </>
+                )}
+              </button>
             </div>
-            <p className="text-[11px] mt-0.5" style={{ color: "#4a6080" }}>
-              Flood-aware A* pathfinding & dynamic GIS map
-            </p>
+            <div className="flex items-center justify-between text-[10px] font-mono" style={{ color: "#4a6080" }}>
+              <span>A* Pathfinding & Dynamic GIS Map</span>
+              <span className="text-cyan-400 font-bold">{activeCity?.name || "Patna"}</span>
+            </div>
           </div>
 
           <div className="p-4 space-y-3 flex-1">
+            {/* DISPATCH TYPE TABS (SINGLE vs CONVOY) */}
+            <div className="flex bg-black/60 p-1 rounded-xl border border-slate-800 text-[10px] font-mono font-bold">
+              <button
+                onClick={() => setIsConvoyMode(false)}
+                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  !isConvoyMode ? "bg-cyan-600 text-white shadow" : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                SINGLE UNIT
+              </button>
+              <button
+                onClick={() => setIsConvoyMode(true)}
+                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  isConvoyMode ? "bg-amber-600 text-white shadow animate-pulse" : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                CONVOY PLANNER 🚛
+              </button>
+            </div>
+
+            {isConvoyMode && (
+              <div className="rounded-xl p-3 bg-amber-950/20 border border-amber-500/30 space-y-2 animate-slide-down">
+                <div className="flex items-center justify-between text-[10px] font-mono text-amber-300 font-bold">
+                  <span>CONVOY FLEET COMPOSITION</span>
+                  <span>{selectedConvoyVehicles.length} UNITS</span>
+                </div>
+                <div className="space-y-1.5">
+                  {[
+                    { name: "Motorboat 03", depth: "2.5m clearance", icon: "🚤" },
+                    { name: "Amphibious Truck A1", depth: "1.2m clearance", icon: "🚚" },
+                    { name: "Medical Rig M2", depth: "0.6m clearance", icon: "🚑" },
+                    { name: "Heavy Debris Crawler", depth: "1.8m clearance", icon: "🚜" },
+                  ].map((unit) => {
+                    const isSelected = selectedConvoyVehicles.includes(unit.name);
+                    return (
+                      <button
+                        key={unit.name}
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedConvoyVehicles(selectedConvoyVehicles.filter((v) => v !== unit.name));
+                          } else {
+                            setSelectedConvoyVehicles([...selectedConvoyVehicles, unit.name]);
+                          }
+                        }}
+                        className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-mono transition-colors text-left cursor-pointer"
+                        style={{
+                          background: isSelected ? "rgba(245,158,11,0.15)" : "rgba(15,23,42,0.6)",
+                          border: `1px solid ${isSelected ? "rgba(245,158,11,0.4)" : "#1a2640"}`,
+                          color: isSelected ? "#fde68a" : "#64748b",
+                        }}
+                      >
+                        <span>{unit.icon} {unit.name}</span>
+                        <span className="text-[9px] text-amber-400 font-bold">{unit.depth}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* FROM INPUT */}
             <div>
               <label className="text-[10px] font-mono uppercase tracking-wider mb-1 block" style={{ color: "#4a6080" }}>

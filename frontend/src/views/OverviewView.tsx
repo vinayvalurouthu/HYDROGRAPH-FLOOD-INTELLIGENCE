@@ -275,37 +275,61 @@ export default function OverviewView({ onNavigate }: Props) {
 
       {/* Main grid */}
       <div className="grid grid-cols-3 gap-4">
-        {/* Forecast chart */}
+        {/* 24-Hour Hydrograph AI Predictive Rise & Discharge Chart */}
         <div
           className="col-span-2 rounded-xl p-4"
           style={{
-            background: "rgba(12,19,34,0.8)",
+            background: "rgba(12,19,34,0.85)",
             border: "1px solid #1a2640",
           }}
         >
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-sm font-semibold text-white">Flood Depth Forecast — R-102</h3>
-              <p className="text-xs mt-0.5" style={{ color: "#4a6080" }}>
-                Time-to-critical visualization with danger threshold
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                24-HOUR HYDROGRAPH AI PREDICTIVE RISE & DISCHARGE
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
+                  AI CONFIDENCE 94%
+                </span>
+              </h3>
+              <p className="text-xs mt-0.5 text-slate-400">
+                Ganges-Sone Confluence water level elevation vs. dam spillway discharge ($m^3/s$)
               </p>
             </div>
-            <span
-              className="text-xs font-mono px-2 py-1 rounded"
-              style={{ background: "rgba(6,182,212,0.1)", color: "#22d3ee" }}
-            >
-              87% CONFIDENCE
-            </span>
+            <div className="flex items-center gap-1 font-mono text-[10px]">
+              <span className="text-slate-400">TIMELINE:</span>
+              {["NOW", "+3H", "+6H", "+12H", "+24H"].map((step, idx) => (
+                <button
+                  key={step}
+                  className={`px-2 py-0.5 rounded border transition-all ${
+                    idx === 1
+                      ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 font-bold"
+                      : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                  }`}
+                >
+                  {step}
+                </button>
+              ))}
+            </div>
           </div>
-          <ResponsiveContainer width="100%" height={180}>
+
+          <ResponsiveContainer width="100%" height={210}>
             <AreaChart
-              data={roadForecast}
+              data={[
+                { time: "00:00", levelM: 2.8, discharge: 1200, danger: 4.5 },
+                { time: "04:00", levelM: 3.1, discharge: 1450, danger: 4.5 },
+                { time: "08:00", levelM: 3.6, discharge: 1800, danger: 4.5 },
+                { time: "12:00 (NOW)", levelM: 4.1, discharge: 2400, danger: 4.5 },
+                { time: "16:00 (+4H)", levelM: 4.8, discharge: 3100, danger: 4.5 },
+                { time: "20:00 (+8H)", levelM: 5.2, discharge: 3800, danger: 4.5 },
+                { time: "00:00 (+12H)", levelM: 4.6, discharge: 2900, danger: 4.5 },
+                { time: "04:00 (+16H)", levelM: 3.9, discharge: 2100, danger: 4.5 },
+              ]}
               margin={{ top: 10, right: 10, bottom: 0, left: -10 }}
             >
               <defs>
-                <linearGradient id="depthGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                <linearGradient id="hydroGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
               <XAxis
@@ -318,7 +342,7 @@ export default function OverviewView({ onNavigate }: Props) {
                 tick={{ fill: "#4a6080", fontSize: 10, fontFamily: "JetBrains Mono" }}
                 axisLine={false}
                 tickLine={false}
-                unit=" cm"
+                unit="m"
               />
               <Tooltip
                 contentStyle={{
@@ -332,24 +356,26 @@ export default function OverviewView({ onNavigate }: Props) {
                 labelStyle={{ color: "#67e8f9" }}
               />
               <ReferenceLine
-                y={30}
+                y={4.5}
                 stroke="#ef4444"
                 strokeDasharray="4 4"
                 label={{
-                  value: "DANGER",
+                  value: "SECTOR DANGER LEVEL (4.5m)",
                   fill: "#ef4444",
                   fontSize: 9,
                   fontFamily: "JetBrains Mono",
+                  fontWeight: "bold",
                 }}
               />
               <Area
                 type="monotone"
-                dataKey="depth"
-                stroke="#f97316"
-                strokeWidth={2}
-                fill="url(#depthGrad)"
-                dot={{ fill: "#f97316", r: 3 }}
-                activeDot={{ r: 5, fill: "#ef4444" }}
+                dataKey="levelM"
+                name="Water Level (m)"
+                stroke="#ef4444"
+                strokeWidth={2.5}
+                fill="url(#hydroGrad)"
+                dot={{ fill: "#ef4444", r: 4 }}
+                activeDot={{ r: 6, fill: "#38bdf8" }}
               />
             </AreaChart>
           </ResponsiveContainer>

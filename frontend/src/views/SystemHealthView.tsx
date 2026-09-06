@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { systemServices, analyticsData } from "../mockData";
 import type { SystemService } from "../mockData";
 import {
@@ -10,7 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { AlertTriangle, CheckCircle, WifiOff, Activity } from "lucide-react";
+import { AlertTriangle, CheckCircle, WifiOff, Activity, RefreshCw, Check } from "lucide-react";
 
 function StatusDot({ status }: { status: SystemService["status"] }) {
   const config = {
@@ -52,19 +53,50 @@ function LatencyBar({ ms }: { ms: number }) {
 }
 
 export default function SystemHealthView() {
-  const healthyCount = systemServices.filter((s) => s.status === "HEALTHY").length;
-  const degradedCount = systemServices.filter((s) => s.status === "DEGRADED").length;
-  const offlineCount = systemServices.filter((s) => s.status === "OFFLINE").length;
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanToast, setScanToast] = useState(false);
+  const [serviceList, setServiceList] = useState<SystemService[]>(systemServices);
+
+  const healthyCount = serviceList.filter((s) => s.status === "HEALTHY").length;
+  const degradedCount = serviceList.filter((s) => s.status === "DEGRADED").length;
+  const offlineCount = serviceList.filter((s) => s.status === "OFFLINE").length;
+
+  const handleRunDiagnostics = () => {
+    setIsScanning(true);
+    setScanToast(false);
+    setTimeout(() => {
+      // Simulate live ping updates
+      setServiceList((prev) =>
+        prev.map((s) => ({
+          ...s,
+          latencyMs: Math.max(12, Math.round(s.latencyMs * (0.8 + Math.random() * 0.4))),
+          lastUpdate: "Just now",
+        }))
+      );
+      setIsScanning(false);
+      setScanToast(true);
+      setTimeout(() => setScanToast(false), 3000);
+    }, 1200);
+  };
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-5 space-y-5">
+    <div className="h-full overflow-y-auto px-6 py-5 space-y-5 relative">
+      {scanToast && (
+        <div
+          className="fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl text-xs font-mono font-bold text-white flex items-center gap-2 shadow-2xl animate-slide-down"
+          style={{ background: "#10b981", border: "1px solid rgba(255,255,255,0.2)" }}
+        >
+          <Check size={14} /> Diagnostic scan complete. All endpoints verified.
+        </div>
+      )}
+
       {/* Header summary */}
       <div className="grid grid-cols-4 gap-3">
         {[
           {
             label: "Overall Status",
             value: degradedCount > 0 ? "DEGRADED" : "OPERATIONAL",
-            sub: `${healthyCount}/${systemServices.length} services healthy`,
+            sub: `${healthyCount}/${serviceList.length} services healthy`,
             color: degradedCount > 0 ? "#f59e0b" : "#10b981",
             icon: degradedCount > 0 ? AlertTriangle : CheckCircle,
           },
@@ -121,7 +153,7 @@ export default function SystemHealthView() {
           style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)" }}
         >
           <AlertTriangle size={16} style={{ color: "#f59e0b", flexShrink: 0 }} />
-          <div>
+          <div className="flex-1">
             <span className="text-sm font-bold" style={{ color: "#fde68a" }}>
               RADAR DATA DELAYED
             </span>
@@ -138,13 +170,24 @@ export default function SystemHealthView() {
         style={{ border: "1px solid #1a2640" }}
       >
         <div
-          className="px-4 py-3 flex items-center gap-2"
+          className="px-4 py-3 flex items-center justify-between"
           style={{ background: "rgba(12,19,34,0.9)", borderBottom: "1px solid #1a2640" }}
         >
-          <Activity size={14} style={{ color: "#4a6080" }} />
-          <h3 className="text-xs font-mono uppercase tracking-widest" style={{ color: "#4a6080" }}>
-            Service Status
-          </h3>
+          <div className="flex items-center gap-2">
+            <Activity size={14} style={{ color: "#4a6080" }} />
+            <h3 className="text-xs font-mono uppercase tracking-widest" style={{ color: "#4a6080" }}>
+              Service Status & Health Monitor
+            </h3>
+          </div>
+          <button
+            onClick={handleRunDiagnostics}
+            disabled={isScanning}
+            className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-white flex items-center gap-1.5 transition-all hover:opacity-90 cursor-pointer disabled:opacity-50"
+            style={{ background: "rgba(6,182,212,0.2)", border: "1px solid #06b6d4", color: "#22d3ee" }}
+          >
+            <RefreshCw size={12} className={isScanning ? "animate-spin text-cyan-400" : ""} />
+            {isScanning ? "RUNNING DIAGNOSTICS…" : "RE-TEST ALL SERVICES"}
+          </button>
         </div>
         <div style={{ background: "rgba(10,16,28,0.8)" }}>
           {/* Header row */}
@@ -162,13 +205,13 @@ export default function SystemHealthView() {
             <span className="w-20 text-right">Error Rate</span>
             <span className="w-28 text-right">Last Update</span>
           </div>
-          {systemServices.map((svc, i) => (
+          {serviceList.map((svc, i) => (
             <div
               key={svc.name}
               className="grid items-center px-4 py-3 hover:bg-white/[0.02] transition-colors"
               style={{
                 gridTemplateColumns: "1fr auto auto auto auto",
-                borderBottom: i < systemServices.length - 1 ? "1px solid #1a2640" : "none",
+                borderBottom: i < serviceList.length - 1 ? "1px solid #1a2640" : "none",
               }}
             >
               <span className="text-sm font-medium text-white">{svc.name}</span>

@@ -19,12 +19,15 @@ import {
   CheckCircle,
   AlertTriangle,
   Info,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { alerts, roads, kpiData } from "./mockData";
 import type { Alert } from "./mockData";
 import { PRESET_CITIES, generatePresetCityData } from "./services/cityDataGenerator";
 import type { CityPreset, CityFloodDataset } from "./services/cityDataGenerator";
 import { DispatchProvider } from "./context/DispatchContext";
+import { useNetworkStatus } from "./hooks/useNetworkStatus";
 
 // Views
 import OverviewView from "./views/OverviewView";
@@ -293,6 +296,7 @@ export interface RoutingRequestPayload {
   roadName?: string;
   lat?: number;
   lng?: number;
+  autoStartNav?: boolean;
   timestamp: number;
 }
 
@@ -307,6 +311,7 @@ export default function App() {
   const [localAlerts, setLocalAlerts] = useState<Alert[]>(alerts);
   const [liveTime, setLiveTime] = useState(new Date());
   const [closedRoads, setClosedRoads] = useState<Set<string>>(new Set());
+  const { isConnected: isNetworkConnected, isMeshSimulated, toggleMeshSimulation, isSyncing } = useNetworkStatus();
 
   useEffect(() => {
     const initialDataset = generatePresetCityData(PRESET_CITIES[0]);
@@ -315,24 +320,30 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  const handleNavigate = (view: string, roadId?: string) => {
-    const targetRoadId = roadId || selectedRoad;
+  const handleNavigate = (
+    view: string,
+    roadIdOrTarget?: string,
+    customCoords?: { lat?: number; lng?: number; name?: string; autoStartNav?: boolean }
+  ) => {
+    const targetRoadId = roadIdOrTarget || selectedRoad;
     if (view === "routing") {
       const allRoads = cityDataset?.roads || roads;
       const road = targetRoadId ? allRoads.find((r) => r.id === targetRoadId) : undefined;
-      const destinationName = road ? `${road.name} (${road.id})` : targetRoadId || "Rajam Relief Hub";
+      const destinationName =
+        customCoords?.name || (road ? `${road.name} (${road.id})` : roadIdOrTarget || "Rajam Relief Hub");
       setRoutingRequest({
         from: "Current Location",
         to: destinationName,
         roadId: road?.id || targetRoadId || undefined,
-        roadName: road?.name || targetRoadId || undefined,
-        lat: road?.lat,
-        lng: road?.lng,
+        roadName: road?.name || destinationName,
+        lat: customCoords?.lat ?? road?.lat,
+        lng: customCoords?.lng ?? road?.lng,
+        autoStartNav: customCoords?.autoStartNav ?? true,
         timestamp: Date.now(),
       });
     }
     setActiveView(view);
-    if (roadId) setSelectedRoad(roadId);
+    if (roadIdOrTarget && !customCoords) setSelectedRoad(roadIdOrTarget);
   };
 
   const dismissAlert = (id: string) => {
@@ -404,13 +415,25 @@ export default function App() {
             <div className="text-[9px] font-mono" style={{ color: "#4a6080" }}>{activeCity.state.toUpperCase()} · {activeCity.regionType.toUpperCase()}</div>
           </div>
           <div
-            className="flex items-center gap-1.5 px-2 py-1 rounded-full"
-            style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-full cursor-pointer hover:opacity-80 transition-all"
+            style={{
+              background: isNetworkConnected ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.15)",
+              border: `1px solid ${isNetworkConnected ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.4)"}`,
+            }}
+            onClick={toggleMeshSimulation}
+            title="Click to toggle offline P2P mesh relay simulation"
           >
-            <span className="w-1.5 h-1.5 rounded-full animate-blink" style={{ background: "#10b981" }} />
-            <span className="text-[10px] font-mono" style={{ color: "#6ee7b7" }}>
-              SYSTEM OPERATIONAL
-            </span>
+            {isNetworkConnected ? (
+              <>
+                <Wifi size={11} className="text-emerald-400" />
+                <span className="text-[10px] font-mono font-bold text-emerald-300">SATELLITE ONLINE</span>
+              </>
+            ) : (
+              <>
+                <WifiOff size={11} className="text-amber-400 animate-pulse" />
+                <span className="text-[10px] font-mono font-bold text-amber-300">OFFLINE MESH RELAY</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -605,9 +628,10 @@ export default function App() {
                 routingRequest={routingRequest}
               />
             )}
-            {activeView === "shelters" && <SheltersView />}
+            {activeView === "shelters" && <SheltersView onNavigate={handleNavigate} />}
             {activeView === "sos" && (
               <SOSView
+                onNavigate={handleNavigate}
                 onAssignTeam={(sosId, teamId) => {
                   console.log("Assigned", teamId, "to", sosId);
                 }}
