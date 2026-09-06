@@ -549,6 +549,23 @@ export async function getSystemHealth() {
   });
 }
 
+export async function retestSystemHealth() {
+  return fetchJSON(`${API_BASE}/v1/system/retest`, { method: "POST" }, null);
+}
+
+export async function getSystemMetrics() {
+  return fetchJSON(`${API_BASE}/v1/system/metrics`, undefined, {
+    cpu_usage_pct: 28.4,
+    memory_usage_pct: 42.1,
+    database_conn_pool: { active: 4, idle: 16, max: 20 },
+    radar_ingestion_rate_mb_s: 8.4,
+    active_spatial_queries_per_sec: 42,
+    gnn_inference_latency_p95_ms: 1140,
+    swmm_hydraulic_step_s: 1.2,
+    telemetry_timestamp: new Date().toISOString(),
+  });
+}
+
 export async function getExecutiveKPIs(): Promise<KPIData> {
   return fetchJSON<KPIData>(`${API_BASE}/v1/kpis`, undefined, mock.kpiData);
 }
