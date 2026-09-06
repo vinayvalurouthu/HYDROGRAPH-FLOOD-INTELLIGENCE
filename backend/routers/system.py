@@ -23,6 +23,7 @@ from models import (
     SOSIncident,
     RescueTeam,
     Shelter,
+    ForecastTimeline,
 )
 from schemas import (
     SystemServiceOut,
@@ -216,12 +217,13 @@ async def get_analytics_overview(db: AsyncSession = Depends(get_db)):
     roads_res = await db.execute(select(Road))
     roads = list(roads_res.scalars().all())
 
-    flooded_count = sum(1 for r in roads if r.depth_cm > 15.0)
+    flooded_count = sum(1 for r in roads if r.depth_cm > 15.0 or r.is_closed)
     peak_depth = max([r.peak_depth_cm for r in roads], default=42.0)
     max_vel = max([r.velocity_ms for r in roads], default=0.71)
 
-    sos_res = await db.execute(select(SOSIncident))
-    sos_count = len(list(sos_res.scalars().all()))
+    sos_res = await db.execute(select(SOSIncident).where(SOSIncident.status != "CLOSED"))
+    active_sos = list(sos_res.scalars().all())
+    sos_count = len(active_sos)
 
     shelters_res = await db.execute(select(Shelter))
     shelters = list(shelters_res.scalars().all())
@@ -229,25 +231,51 @@ async def get_analytics_overview(db: AsyncSession = Depends(get_db)):
     tot_occ = sum(s.occupancy for s in shelters)
     shelter_util = (tot_occ / tot_cap * 100.0) if tot_cap > 0 else 68.0
 
+    # Rescue teams calculation for response time
+    teams_res = await db.execute(select(RescueTeam).where(RescueTeam.status != "RETURNING"))
+    teams = list(teams_res.scalars().all())
+    active_teams_count = max(1, len(teams))
+    rescue_response = round(max(6.0, min(25.0, 7.5 + (sos_count / active_teams_count) * 2.2)), 1)
+
+    # Affected population dynamically derived from flooded corridors
+    affected_pop = 9500 + (flooded_count * 1250) + (sos_count * 320)
+
+    # Dynamic hourly flood progression queried from ForecastTimeline
+    timeline_res = await db.execute(select(ForecastTimeline).order_by(ForecastTimeline.id.asc()))
+    timeline_points = list(timeline_res.scalars().all())
+
+    hourly_flood_curve = []
+    if timeline_points:
+        for pt in timeline_points:
+            depth_ratio = (pt.depth_cm / max(1.0, peak_depth))
+            # Calculate roads inundated at this forecast step
+            roads_at_step = sum(
+                1 for r in roads if (r.depth_cm * depth_ratio > 15.0) or r.is_closed
+            )
+            hourly_flood_curve.append({
+                "hour": pt.forecast_time,
+                "roads": roads_at_step,
+                "depth": round(pt.depth_cm, 1),
+            })
+    else:
+        # Fallback progression curve
+        hourly_flood_curve = [
+            {"hour": "NOW", "roads": flooded_count, "depth": round(peak_depth * 0.4, 1)},
+            {"hour": "+30m", "roads": min(len(roads), flooded_count + 1), "depth": round(peak_depth * 0.7, 1)},
+            {"hour": "+60m", "roads": min(len(roads), flooded_count + 2), "depth": round(peak_depth, 1)},
+            {"hour": "+120m", "roads": max(0, flooded_count - 1), "depth": round(peak_depth * 0.6, 1)},
+        ]
+
     return AnalyticsOverviewOut(
         floodedRoads=flooded_count,
         peakDepthCm=peak_depth,
         maxVelocityMs=max_vel,
         floodDurationMin=180,
-        affectedPopulation=14200,
+        affectedPopulation=affected_pop,
         shelterUtilizationPct=round(shelter_util, 1),
         sosCount=sos_count,
-        rescueResponseMin=13.4,
+        rescueResponseMin=rescue_response,
         modelConfidencePct=87.0,
         historicalAccuracyPct=84.0,
-        hourlyFlood=[
-            {"hour": "10:00", "roads": 0, "depth": 0},
-            {"hour": "10:30", "roads": 2, "depth": 8},
-            {"hour": "11:00", "roads": 5, "depth": 18},
-            {"hour": "11:30", "roads": 8, "depth": 28},
-            {"hour": "12:00", "roads": 11, "depth": 36},
-            {"hour": "12:30", "roads": 12, "depth": 42},
-            {"hour": "13:00", "roads": 14, "depth": 44},
-            {"hour": "13:30", "roads": 13, "depth": 41},
-        ],
+        hourlyFlood=hourly_flood_curve,
     )
