@@ -27,6 +27,7 @@ import type { Alert } from "./mockData";
 import { PRESET_CITIES, generatePresetCityData } from "./services/cityDataGenerator";
 import type { CityPreset, CityFloodDataset } from "./services/cityDataGenerator";
 import { DispatchProvider } from "./context/DispatchContext";
+import { CityProvider } from "./context/CityContext";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
 
 // Views
@@ -374,8 +375,9 @@ export default function App() {
     d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   return (
-    <DispatchProvider>
-      <div className="h-screen w-screen flex flex-col overflow-hidden" style={{ background: "#07111e" }}>
+    <CityProvider>
+      <DispatchProvider>
+        <div className="h-screen w-screen flex flex-col overflow-hidden" style={{ background: "#07111e" }}>
       {/* TOP COMMAND BAR */}
       <div
         className="flex-shrink-0 flex items-center px-4 py-2 gap-4"
@@ -805,5 +807,6 @@ export default function App() {
       </div>
     </div>
   </DispatchProvider>
+</CityProvider>
 );
 }

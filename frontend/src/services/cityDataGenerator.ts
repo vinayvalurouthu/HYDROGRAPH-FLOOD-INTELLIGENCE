@@ -187,15 +187,28 @@ export function generatePresetCityData(city: CityPreset): CityFloodDataset {
         { id: `${city.id.toUpperCase().slice(0, 2)}-08`, name: `${city.name} East Canal Linkway`, risk: "SEVERE" as RiskLevel, depth: 63, vel: 0.91 },
       ];
 
-  // Generate Roads with realistic GeoJSON lines
+  // Generate Roads with realistic GeoJSON lines constrained strictly to landmass
   const roads: Road[] = roadNames.map((r, i) => {
-    const angle = (i / roadNames.length) * Math.PI * 2;
-    const distance = 0.012 + (i % 3) * 0.008;
-    const rLat = lat + Math.sin(angle) * distance;
-    const rLng = lng + Math.cos(angle) * distance * 1.1;
+    let angle = (i / roadNames.length) * Math.PI * 2;
 
-    const endLat = rLat + (Math.sin(angle + 0.8) * 0.014);
-    const endLng = rLng + (Math.cos(angle + 0.8) * 0.016);
+    // Coastal land angle constraints (prevent roads extending into the sea/ocean)
+    if (isVizag) {
+      // Visakhapatnam: Sea is East (lng > 83.218). Project inland West/Northwest/Southwest (100° to 260°)
+      angle = Math.PI * 0.65 + (i / (roadNames.length - 1)) * (Math.PI * 0.75);
+    } else if (isMumbai) {
+      // Mumbai: Sea is West (lng < 72.87). Project inland East/Northeast (-70° to 70°)
+      angle = -Math.PI * 0.35 + (i / (roadNames.length - 1)) * (Math.PI * 0.7);
+    } else if (isChennai) {
+      // Chennai: Sea is East (lng > 80.27). Project inland West (110° to 250°)
+      angle = Math.PI * 0.6 + (i / (roadNames.length - 1)) * (Math.PI * 0.8);
+    }
+
+    const distance = 0.008 + (i % 3) * 0.006;
+    const rLat = lat + Math.sin(angle) * distance;
+    const rLng = lng + Math.cos(angle) * distance * (isVizag || isChennai ? 0.8 : 1.1);
+
+    const endLat = rLat + (Math.sin(angle + 0.5) * 0.012);
+    const endLng = rLng + (Math.cos(angle + 0.5) * (isVizag || isChennai ? -0.010 : 0.012));
 
     return {
       id: r.id,
@@ -225,54 +238,53 @@ export function generatePresetCityData(city: CityPreset): CityFloodDataset {
       id: `FZ-${city.id}-01`,
       severity: "SEVERE",
       depth_cm: 65,
-      geojson: createPolygon(lat - 0.006, lng + 0.004, 0.012, 0.014),
+      geojson: createPolygon(lat - 0.004, isVizag || isChennai ? lng - 0.008 : lng + 0.004, 0.010, 0.012),
     },
     {
       id: `FZ-${city.id}-02`,
       severity: "HIGH",
       depth_cm: 42,
-      geojson: createPolygon(lat + 0.009, lng - 0.008, 0.016, 0.018),
+      geojson: createPolygon(lat + 0.007, isVizag || isChennai ? lng - 0.012 : lng - 0.008, 0.012, 0.014),
     },
     {
       id: `FZ-${city.id}-03`,
       severity: "MODERATE",
       depth_cm: 26,
-      geojson: createPolygon(lat + 0.015, lng + 0.012, 0.014, 0.015),
+      geojson: createPolygon(lat + 0.012, isVizag || isChennai ? lng - 0.006 : lng + 0.012, 0.010, 0.012),
     },
     {
       id: `FZ-${city.id}-04`,
       severity: "SEVERE",
       depth_cm: 74,
-      geojson: createPolygon(lat - 0.014, lng - 0.012, 0.018, 0.020),
+      geojson: createPolygon(lat - 0.010, isVizag || isChennai ? lng - 0.014 : lng - 0.012, 0.014, 0.016),
     },
   ];
 
-  // Shelters
+  // Decluttered Shelters placed cleanly across inland grid
   const shelterNames = isVizag
     ? [
-        { name: "Swarna Bharathi Indoor Stadium Relief Camp", addr: "Resapuvanipalem, Vizag", cap: 850, occ: 420, rec: true },
-        { name: "Andhra University Convocation Relief Base", addr: "Waltair Uplands, Vizag", cap: 1200, occ: 680, rec: true },
-        { name: "Gajuwaka Municipal High School Shelter", addr: "Main Road, Gajuwaka", cap: 500, occ: 470, rec: false },
-        { name: "Port Trust Diamond Jubilee Community Hall", addr: "Salagramapuram, Vizag", cap: 650, occ: 210, rec: true },
+        { name: "Swarna Bharathi Indoor Stadium Relief Camp", addr: "Resapuvanipalem, Vizag", cap: 850, occ: 420, rec: true, latOff: 0.012, lngOff: -0.010 },
+        { name: "Andhra University Convocation Relief Base", addr: "Waltair Uplands, Vizag", cap: 1200, occ: 680, rec: true, latOff: 0.006, lngOff: -0.006 },
+        { name: "Gajuwaka Municipal High School Shelter", addr: "Main Road, Gajuwaka", cap: 500, occ: 470, rec: false, latOff: -0.015, lngOff: -0.018 },
+        { name: "Port Trust Diamond Jubilee Community Hall", addr: "Salagramapuram, Vizag", cap: 650, occ: 210, rec: true, latOff: -0.008, lngOff: -0.012 },
       ]
     : isMumbai
     ? [
-        { name: "Bandra Kurla MMRDA Relief Complex", addr: "BKC Complex, Bandra East", cap: 1500, occ: 890, rec: true },
-        { name: "Dadar West Municipal Sports Ground Shelter", addr: "Gokhale Road, Dadar West", cap: 900, occ: 820, rec: false },
-        { name: "Andheri Sports Complex Evacuation Center", addr: "Veera Desai Road, Andheri", cap: 1100, occ: 530, rec: true },
-        { name: "SNDT Women's University Relief Base", addr: "Juhu Road, Santacruz", cap: 700, occ: 290, rec: true },
+        { name: "Bandra Kurla MMRDA Relief Complex", addr: "BKC Complex, Bandra East", cap: 1500, occ: 890, rec: true, latOff: 0.008, lngOff: 0.012 },
+        { name: "Dadar West Municipal Sports Ground Shelter", addr: "Gokhale Road, Dadar West", cap: 900, occ: 820, rec: false, latOff: -0.012, lngOff: 0.004 },
+        { name: "Andheri Sports Complex Evacuation Center", addr: "Veera Desai Road, Andheri", cap: 1100, occ: 530, rec: true, latOff: 0.018, lngOff: 0.008 },
+        { name: "SNDT Women's University Relief Base", addr: "Juhu Road, Santacruz", cap: 700, occ: 290, rec: true, latOff: 0.002, lngOff: 0.015 },
       ]
     : [
-        { name: `${city.name} District Sports Stadium Complex`, addr: `Stadium Road, ${city.name}`, cap: 1000, occ: 520, rec: true },
-        { name: `${city.name} University Central Relief Hub`, addr: `University Campus, ${city.name}`, cap: 800, occ: 380, rec: true },
-        { name: `${city.name} Municipal Town Hall Shelter`, addr: `Civic Center, ${city.name}`, cap: 600, occ: 540, rec: false },
-        { name: `${city.name} Red Cross Disaster Relief Base`, addr: `Relief Avenue, ${city.name}`, cap: 450, occ: 190, rec: true },
+        { name: `${city.name} District Sports Stadium Complex`, addr: `Stadium Road, ${city.name}`, cap: 1000, occ: 520, rec: true, latOff: 0.010, lngOff: isChennai ? -0.012 : 0.010 },
+        { name: `${city.name} University Central Relief Hub`, addr: `University Campus, ${city.name}`, cap: 800, occ: 380, rec: true, latOff: -0.008, lngOff: isChennai ? -0.008 : -0.012 },
+        { name: `${city.name} Municipal Town Hall Shelter`, addr: `Civic Center, ${city.name}`, cap: 600, occ: 540, rec: false, latOff: 0.015, lngOff: isChennai ? -0.018 : 0.014 },
+        { name: `${city.name} Red Cross Disaster Relief Base`, addr: `Relief Avenue, ${city.name}`, cap: 450, occ: 190, rec: true, latOff: -0.014, lngOff: isChennai ? -0.004 : -0.006 },
       ];
 
   const shelters: Shelter[] = shelterNames.map((s, i) => {
-    const angle = (i / shelterNames.length) * Math.PI * 2 + 0.4;
-    const sLat = lat + Math.sin(angle) * 0.022;
-    const sLng = lng + Math.cos(angle) * 0.025;
+    const sLat = lat + s.latOff;
+    const sLng = lng + s.lngOff;
     const occPct = (s.occ / s.cap) * 100;
     return {
       id: `SH-${city.id.toUpperCase().slice(0, 2)}-${i + 1}`,

@@ -23,6 +23,7 @@ import {
   ChevronDown,
   Check,
   Loader2,
+  CloudRain,
 } from "lucide-react";
 import {
   roads as mockRoads,
@@ -38,6 +39,9 @@ import {
   fetchOsmCityData,
 } from "../services/cityDataGenerator";
 import type { CityPreset, CityFloodDataset } from "../services/cityDataGenerator";
+import { useCityContext } from "../context/CityContext";
+import { useCityGeospatial } from "../hooks/useCityGeospatial";
+import { fetchLiveCityWeather, type LiveWeatherTelemetry } from "../services/weatherService";
 
 interface Props {
   selectedRoadId?: string;
@@ -117,14 +121,18 @@ export default function FloodMapView({
   const [searchResults, setSearchResults] = useState<Road[]>([]);
   const [mapReady, setMapReady] = useState(false);
 
+  // City Context & Real-World OpenStreetMap Overpass Geospatial Hook
+  const { selectedCity, setSelectedCity } = useCityContext();
+  const { geojson, loading: isOverpassLoading } = useCityGeospatial(selectedCity);
+
   // Dynamic City Intelligence State
-  const [currentCity, setCurrentCity] = useState<CityPreset>(activeCity || PRESET_CITIES[0]);
-  const [locationInput, setLocationInput] = useState(`${(activeCity || PRESET_CITIES[0]).name}, ${(activeCity || PRESET_CITIES[0]).state}`);
+  const [currentCity, setCurrentCity] = useState<CityPreset>(selectedCity || activeCity || PRESET_CITIES[0]);
+  const [locationInput, setLocationInput] = useState(`${selectedCity.name}, ${selectedCity.state}`);
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [searchStatusMsg, setSearchStatusMsg] = useState("");
-  const [dataSource, setDataSource] = useState<"PRESET" | "OSM_LIVE" | "SIMULATION">(cityDataset ? cityDataset.source : "PRESET");
+  const [dataSource, setDataSource] = useState<"PRESET" | "OSM_LIVE" | "SIMULATION">(cityDataset ? cityDataset.source : "OSM_LIVE");
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
-  const [mapCenter, setMapCenter] = useState<[number, number]>(cityDataset ? cityDataset.city.center : PATNA_CENTER);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(selectedCity.center || PATNA_CENTER);
 
   // Data layers
   const [roads, setRoads] = useState<Road[]>(cityDataset ? cityDataset.roads : mockRoads);
@@ -133,6 +141,123 @@ export default function FloodMapView({
   const [sosIncidents, setSosIncidents] = useState(cityDataset ? cityDataset.sosIncidents : mockSOS);
   const [shelters, setShelters] = useState(cityDataset ? cityDataset.shelters : mockShelters);
   const [drainageNodes, setDrainageNodes] = useState(cityDataset ? cityDataset.drainageNodes : mockDrainageNodes);
+
+  const [liveWeather, setLiveWeather] = useState<LiveWeatherTelemetry | null>(null);
+
+  // Smooth Viewport FlyTo & Live Weather Fetch when selectedCity changes
+  useEffect(() => {
+    if (selectedCity) {
+      setCurrentCity(selectedCity);
+      setLocationInput(`${selectedCity.name}, ${selectedCity.state}`);
+      const center: [number, number] = selectedCity.center || [25.6093, 85.1376];
+      setMapCenter(center);
+      if (mapRef.current) {
+        mapRef.current.flyTo(center, selectedCity.zoom || DEFAULT_ZOOM, {
+          duration: 1.5,
+          easeLinearity: 0.25,
+        });
+      }
+
+      fetchLiveCityWeather(center[0], center[1], selectedCity.rainfallMmHr).then((w) => setLiveWeather(w));
+    }
+  }, [selectedCity]);
+
+  // Sync GeoJSON feature collections from Overpass API into Leaflet render state
+  useEffect(() => {
+    if (!selectedCity) return;
+    const presetData = generatePresetCityData(selectedCity);
+
+    // Always update flood zones & SOS incidents centered on the selected city
+    setFloodZones(presetData.floodZones);
+    setSosIncidents(presetData.sosIncidents);
+    setForecast(presetData.forecast);
+
+    if (geojson) {
+      if (geojson.roadsGeoJSON?.features && geojson.roadsGeoJSON.features.length > 0) {
+        setRoads(
+          geojson.roadsGeoJSON.features.map((f: any) => {
+            const geom = f.geometry || {};
+            const coords = geom.coordinates || [];
+            const mid = coords[Math.floor(coords.length / 2)] || [selectedCity.center[1], selectedCity.center[0]];
+            return {
+              id: f.properties.id || `WAY-${f.id}`,
+              name: f.properties.name,
+              risk: f.properties.risk || "MODERATE",
+              depthCm: f.properties.depthCm || 20,
+              peakDepthCm: f.properties.peakDepthCm || 28,
+              velocityMs: 0.4,
+              durationMin: 45,
+              timeToFloodMin: 15,
+              confidencePct: 90,
+              rainfallMmHr: selectedCity.rainfallMmHr || 95,
+              drainUtilPct: 70,
+              cause: ["Monsoon runoff", "Catchment overflow"],
+              closed: f.properties.closed || false,
+              lat: mid[1],
+              lng: mid[0],
+              geojson: f.geometry,
+            };
+          })
+        );
+      } else {
+        setRoads(presetData.roads);
+      }
+
+      if (geojson.sheltersGeoJSON?.features && geojson.sheltersGeoJSON.features.length > 0) {
+        setShelters(
+          geojson.sheltersGeoJSON.features.map((f: any) => ({
+            id: f.properties.id || `SH-${f.id}`,
+            name: f.properties.name,
+            address: `${f.properties.name}, ${selectedCity.name}`,
+            capacity: f.properties.capacity || 400,
+            occupancy: f.properties.occupancy || 150,
+            status: f.properties.status || "OPEN",
+            floodRisk: "LOW",
+            distanceKm: 1.5,
+            etaMin: 10,
+            medical: true,
+            food: true,
+            water: true,
+            power: true,
+            accessibility: true,
+            lastUpdated: "OSM Live",
+            recommended: true,
+            lat: f.geometry?.coordinates?.[1] || selectedCity.center[0],
+            lng: f.geometry?.coordinates?.[0] || selectedCity.center[1],
+          }))
+        );
+      } else {
+        setShelters(presetData.shelters);
+      }
+
+      if (geojson.drainageGeoJSON?.features && geojson.drainageGeoJSON.features.length > 0) {
+        setDrainageNodes(
+          geojson.drainageGeoJSON.features.map((f: any) => ({
+            id: f.properties.id || `DN-${f.id}`,
+            name: f.properties.name,
+            status: f.properties.status || "NORMAL",
+            flowLs: 850,
+            capacityLs: 2000,
+            flowRateM3s: f.properties.flowRateM3s || 8.5,
+            capacityM3s: f.properties.capacityM3s || 20.0,
+            utilizationPct: 65,
+            waterLevelM: 1.2,
+            lat: f.geometry?.coordinates?.[1] || selectedCity.center[0],
+            lng: f.geometry?.coordinates?.[0] || selectedCity.center[1],
+          }))
+        );
+      } else {
+        setDrainageNodes(presetData.drainageNodes);
+      }
+
+      setDataSource(geojson.source === "OVERPASS_API" ? "OSM_LIVE" : "SIMULATION");
+    } else {
+      setRoads(presetData.roads);
+      setShelters(presetData.shelters);
+      setDrainageNodes(presetData.drainageNodes);
+      setDataSource("PRESET");
+    }
+  }, [geojson, selectedCity]);
 
   // Apply complete city dataset
   const applyCityDataset = useCallback((dataset: CityFloodDataset) => {
@@ -148,17 +273,16 @@ export default function FloodMapView({
     setShelters(dataset.shelters);
     setDrainageNodes(dataset.drainageNodes);
     setForecast(dataset.forecast);
-    mapRef.current?.flyTo(dataset.city.center, dataset.city.zoom || DEFAULT_ZOOM, { duration: 0.8 });
-  }, [onCityChange]);
+    setSelectedCity({ ...dataset.city, radius: 5000 });
+  }, [onCityChange, onCityDatasetChange, setSelectedCity]);
 
-  // Preset selector
+  // Preset selector updating City Context
   const selectPresetCity = useCallback((cityId: string) => {
     const preset = PRESET_CITIES.find((c) => c.id === cityId);
     if (!preset) return;
-    const dataset = generatePresetCityData(preset);
-    applyCityDataset(dataset);
+    setSelectedCity({ ...preset, radius: 5000 });
     setCityDropdownOpen(false);
-  }, [applyCityDataset]);
+  }, [setSelectedCity]);
 
   // Search any location worldwide via Geocoding + Overpass + Simulation Fallback
   const searchLocation = async (query: string) => {
@@ -331,50 +455,56 @@ export default function FloodMapView({
           });
 
           // Road label at midpoint
-          const coords = geojson.coordinates;
+          const geom = geojson.geometry || geojson;
+          const coords = geom.coordinates;
           if (coords && coords.length > 0) {
             const mid = coords[Math.floor(coords.length / 2)];
-            let labelHtml = "";
-            if (road.closed) {
-              labelHtml = `<div style="
-                background: rgba(239, 68, 68, 0.2);
-                border: 1px solid rgba(239, 68, 68, 0.8);
-                color: #fca5a5;
-                font-size: 11px;
-                font-weight: 900;
-                font-family: 'JetBrains Mono', monospace;
-                padding: 4px 8px;
-                border-radius: 4px;
-                white-space: nowrap;
-                backdrop-filter: blur(8px);
-                text-shadow: 0 1px 4px rgba(0,0,0,0.9);
-                letter-spacing: 0.5px;
-                box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
-              ">🚧 ROAD BLOCKED</div>`;
-            } else {
-              labelHtml = `<div style="
-                background: ${color}22;
-                border: 1px solid ${color}88;
-                color: ${color};
-                font-size: 10px;
-                font-weight: 700;
-                font-family: 'JetBrains Mono', monospace;
-                padding: 2px 6px;
-                border-radius: 4px;
-                white-space: nowrap;
-                backdrop-filter: blur(8px);
-                text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-                letter-spacing: 0.5px;
-              ">${road.id} · ${road.depthCm}cm</div>`;
-            }
+            if (Array.isArray(mid) && mid.length >= 2) {
+              const labelLat = mid[1];
+              const labelLng = mid[0];
 
-            const labelIcon = L.divIcon({
-              className: "road-label-icon",
-              html: labelHtml,
-              iconSize: [0, 0],
-              iconAnchor: [0, 0],
-            });
-            L.marker([mid[1], mid[0]], { icon: labelIcon, interactive: false }).addTo(group);
+              let labelHtml = "";
+              if (road.closed) {
+                labelHtml = `<div style="
+                  background: rgba(239, 68, 68, 0.2);
+                  border: 1px solid rgba(239, 68, 68, 0.8);
+                  color: #fca5a5;
+                  font-size: 11px;
+                  font-weight: 900;
+                  font-family: 'JetBrains Mono', monospace;
+                  padding: 4px 8px;
+                  border-radius: 4px;
+                  white-space: nowrap;
+                  backdrop-filter: blur(8px);
+                  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+                  letter-spacing: 0.5px;
+                  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+                ">🚧 ROAD BLOCKED</div>`;
+              } else {
+                labelHtml = `<div style="
+                  background: ${color}22;
+                  border: 1px solid ${color}88;
+                  color: ${color};
+                  font-size: 10px;
+                  font-weight: 700;
+                  font-family: 'JetBrains Mono', monospace;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                  white-space: nowrap;
+                  backdrop-filter: blur(8px);
+                  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+                  letter-spacing: 0.5px;
+                ">${road.id} · ${road.depthCm}cm</div>`;
+              }
+
+              const labelIcon = L.divIcon({
+                className: "road-label-icon",
+                html: labelHtml,
+                iconSize: [0, 0],
+                iconAnchor: [0, 0],
+              });
+              L.marker([labelLat, labelLng], { icon: labelIcon, interactive: false }).addTo(group);
+            }
           }
 
           // Selected road glow effect
@@ -563,7 +693,6 @@ export default function FloodMapView({
     group.clearLayers();
 
     drainageNodes.forEach((node) => {
-      if (!node.lat && !node.lng) return;
       const lat = (node as any).lat || 0;
       const lng = (node as any).lng || 0;
       if (!lat || !lng) return;
@@ -574,15 +703,19 @@ export default function FloodMapView({
         radius: 6,
         color: color,
         fillColor: color,
-        fillOpacity: 0.4,
+        fillOpacity: 0.5,
         weight: 2,
       });
+
+      const flow = node.flowLs || Math.round(((node as any).flowRateM3s || 8.5) * 100);
+      const cap = node.capacityLs || Math.round(((node as any).capacityM3s || 20) * 100);
+      const util = node.utilizationPct || 65;
 
       marker.bindTooltip(
         `<div style="font-family:monospace;font-size:11px;">
           <div style="color:${color};font-weight:700;">${node.name}</div>
-          <div style="color:#94a3b8;">Utilization: ${node.utilizationPct}%</div>
-          <div style="color:#64748b;">${node.flowLs}/${node.capacityLs} L/s</div>
+          <div style="color:#94a3b8;">Utilization: ${util}%</div>
+          <div style="color:#64748b;">${flow}/${cap} L/s</div>
           ${node.anomaly ? `<div style="color:#f59e0b;font-size:10px;margin-top:2px;">⚠ ${node.anomaly}</div>` : ""}
         </div>`,
         { className: "hydro-tooltip" }
@@ -878,6 +1011,17 @@ export default function FloodMapView({
               {dataSource === "OSM_LIVE" ? "⚡ OSM LIVE" : dataSource === "PRESET" ? "🏢 PRESET DATASET" : "🌊 MULTI-ZONE SIM"}
             </span>
           </div>
+
+          {/* Live OpenWeatherMap Telemetry Badge */}
+          {liveWeather && (
+            <div className="flex items-center justify-between pt-1 border-t border-[#1a2640]/60 text-[8px] font-mono text-cyan-300">
+              <span className="flex items-center gap-1">
+                <CloudRain size={9} className="text-cyan-400 animate-pulse" />
+                <span>OWM LIVE: {liveWeather.rainfallMmHr}mm/h · {liveWeather.tempC}°C</span>
+              </span>
+              <span className="text-slate-400">Wind {liveWeather.windSpeedMs}m/s ({liveWeather.condition})</span>
+            </div>
+          )}
         </div>
 
         {/* Hazard & Distress Badges */}
@@ -1025,6 +1169,23 @@ export default function FloodMapView({
           </span>
         </button>
       </div>
+
+      {/* Tactical Overpass API Loading Spinner Overlay */}
+      {isOverpassLoading && (
+        <div className="absolute inset-0 z-[2000] flex flex-col items-center justify-center bg-slate-950/70 backdrop-blur-sm animate-fade-in pointer-events-none">
+          <div className="p-4 rounded-2xl bg-slate-900/90 border border-cyan-500/40 shadow-2xl flex flex-col items-center gap-3 max-w-xs text-center">
+            <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+            <div>
+              <div className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                QUERYING OVERPASS GEOSPATIAL ENGINE
+              </div>
+              <div className="text-[10px] font-mono text-cyan-300 mt-1">
+                Fetching real-world OSM roads, shelters & water nodes for {selectedCity.name}...
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* THE MAP */}
       <div ref={mapContainerRef} className="flex-1 w-full" style={{ minHeight: 0 }} />
