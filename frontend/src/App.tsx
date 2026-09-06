@@ -311,7 +311,15 @@ export default function App() {
   const [localAlerts, setLocalAlerts] = useState<Alert[]>(alerts);
   const [liveTime, setLiveTime] = useState(new Date());
   const [closedRoads, setClosedRoads] = useState<Set<string>>(new Set());
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const { isConnected: isNetworkConnected, isMeshSimulated, toggleMeshSimulation, isSyncing } = useNetworkStatus();
+
+  const handleCityChange = (city: CityPreset) => {
+    setActiveCity(city);
+    const newDataset = generatePresetCityData(city);
+    setCityDataset(newDataset);
+    setLocationDropdownOpen(false);
+  };
 
   useEffect(() => {
     const initialDataset = generatePresetCityData(PRESET_CITIES[0]);
@@ -408,12 +416,68 @@ export default function App() {
 
         <div className="w-px h-6 flex-shrink-0" style={{ background: "#1a2640" }} />
 
-        {/* Location + status */}
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <div>
-            <div className="text-xs font-mono font-bold text-white tracking-wide">{activeCity.name.toUpperCase()}</div>
-            <div className="text-[9px] font-mono" style={{ color: "#4a6080" }}>{activeCity.state.toUpperCase()} · {activeCity.regionType.toUpperCase()}</div>
-          </div>
+        {/* Location + status with Dropdown */}
+        <div className="relative flex items-center gap-3 flex-shrink-0">
+          <button
+            onClick={() => setLocationDropdownOpen((p) => !p)}
+            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white/5 transition-colors text-left group cursor-pointer"
+            title="Click to switch operational center"
+          >
+            <div>
+              <div className="text-xs font-mono font-bold text-white tracking-wide flex items-center gap-1.5">
+                {activeCity.name.toUpperCase()}
+                <ChevronDown
+                  size={12}
+                  className={`text-slate-400 group-hover:text-cyan-400 transition-transform duration-200 ${
+                    locationDropdownOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </div>
+              <div className="text-[9px] font-mono" style={{ color: "#4a6080" }}>
+                {activeCity.state.toUpperCase()} · {activeCity.regionType.toUpperCase()}
+              </div>
+            </div>
+          </button>
+
+          {locationDropdownOpen && (
+            <div
+              className="absolute top-full left-0 mt-2 w-72 rounded-xl p-2 z-50 shadow-2xl animate-slide-down"
+              style={{
+                background: "#0c1322",
+                border: "1px solid #1a2640",
+                boxShadow: "0 12px 30px rgba(0,0,0,0.85)",
+              }}
+            >
+              <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-2 py-1 mb-1 border-b border-slate-800 flex justify-between items-center">
+                <span>Operational Centers</span>
+                <span className="text-[9px] text-cyan-400 font-bold">{PRESET_CITIES.length} ZONES</span>
+              </div>
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {PRESET_CITIES.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => handleCityChange(c)}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs font-mono transition-colors flex items-center justify-between cursor-pointer ${
+                      c.id === activeCity.id
+                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold"
+                        : "text-slate-300 hover:bg-white/5"
+                    }`}
+                  >
+                    <div>
+                      <div className="font-medium text-white">{c.name}</div>
+                      <div className="text-[9px] text-slate-500">
+                        {c.state} · {c.waterBody}
+                      </div>
+                    </div>
+                    {c.id === activeCity.id && (
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#06b6d4]" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div
             className="flex items-center gap-1.5 px-2 py-1 rounded-full cursor-pointer hover:opacity-80 transition-all"
             style={{
@@ -596,7 +660,12 @@ export default function App() {
           {/* View area */}
           <div className="flex-1 overflow-hidden relative">
             {activeView === "overview" && (
-              <OverviewView onNavigate={handleNavigate} />
+              <OverviewView
+                onNavigate={handleNavigate}
+                activeCity={activeCity}
+                cityDataset={cityDataset}
+                onCityChange={handleCityChange}
+              />
             )}
             {activeView === "map" && (
               <FloodMapView
