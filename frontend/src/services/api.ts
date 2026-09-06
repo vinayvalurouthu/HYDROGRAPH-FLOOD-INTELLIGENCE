@@ -310,6 +310,19 @@ export async function createSOSAlert(data: Partial<SOSIncident>): Promise<SOSInc
   );
 }
 
+export const submitSOSReport = async (payload: any) => {
+  return createSOSAlert({
+    people: payload.victimCount || payload.people || 1,
+    children: payload.childrenCount || payload.children || 0,
+    elderly: payload.elderlyCount || payload.elderly || 0,
+    medical: payload.hasMedical || payload.medical || false,
+    waterDepthM: (payload.reportedWaterDepthCm || 60) / 100,
+    lat: payload.lat,
+    lng: payload.lng,
+    location: payload.locationName || payload.location || "Patna Command Sector"
+  });
+};
+
 export async function updateSOSStatus(incidentId: string, status: string): Promise<SOSIncident> {
   const encId = encodeURIComponent(incidentId);
   return fetchJSON<SOSIncident>(

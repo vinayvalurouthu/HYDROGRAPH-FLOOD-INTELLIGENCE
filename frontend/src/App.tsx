@@ -21,6 +21,8 @@ import {
   Info,
   Wifi,
   WifiOff,
+  Radio,
+  Compass,
 } from "lucide-react";
 import { alerts, roads, kpiData } from "./mockData";
 import type { Alert } from "./mockData";
@@ -42,6 +44,8 @@ import RescueView from "./views/RescueView";
 import ScenariosView from "./views/ScenariosView";
 import ReplayView from "./views/ReplayView";
 import SystemHealthView from "./views/SystemHealthView";
+import CitizenPortal from "./views/CitizenPortal";
+import RescueFieldView from "./views/RescueFieldView";
 
 type NavItem = {
   id: string;
@@ -53,13 +57,15 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "citizen", label: "Citizen SOS Portal", icon: Radio, badge: "SOS", critical: true },
+  { id: "field", label: "Rescue Field Console", icon: Compass, badge: "LIVE" },
   { id: "map", label: "Live Map", icon: Map },
   { id: "hotspots", label: "Hotspots", icon: Flame, badge: 6, critical: true },
   { id: "drainage", label: "Drainage", icon: Waves },
   { id: "routing", label: "Routing", icon: Navigation },
   { id: "shelters", label: "Shelters", icon: Building2 },
-  { id: "sos", label: "SOS", icon: Zap, badge: 18, critical: true },
-  { id: "rescue", label: "Rescue", icon: Users, badge: 2 },
+  { id: "sos", label: "SOS Triage", icon: Zap, badge: 18, critical: true },
+  { id: "rescue", label: "Rescue Dispatch", icon: Users, badge: 2 },
   { id: "scenarios", label: "Scenarios", icon: FlaskConical },
   { id: "replay", label: "Replay", icon: History },
   { id: "health", label: "System Health", icon: Activity },
@@ -709,6 +715,8 @@ export default function App() {
               />
             )}
             {activeView === "rescue" && <RescueView />}
+            {activeView === "citizen" && <CitizenPortal />}
+            {activeView === "field" && <RescueFieldView />}
             {activeView === "scenarios" && <ScenariosView activeCity={activeCity} cityDataset={cityDataset} />}
             {activeView === "replay" && <ReplayView />}
             {activeView === "health" && <SystemHealthView />}
