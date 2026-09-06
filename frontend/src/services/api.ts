@@ -524,6 +524,18 @@ export async function getHistoricalEventDetail(eventId: string) {
   });
 }
 
+export async function getHistoricalEventCompare(eventId: string) {
+  return fetchJSON(`${API_BASE}/v1/replay/events/${eventId}/compare`, undefined, null);
+}
+
+export async function getHistoricalEventSimulation(eventId: string) {
+  return fetchJSON(`${API_BASE}/v1/replay/events/${eventId}/simulation`, undefined, null);
+}
+
+export async function getReplayBenchmarks() {
+  return fetchJSON(`${API_BASE}/v1/replay/benchmarks`, undefined, null);
+}
+
 // ─── 9. System Telemetry & KPIs ──────────────────────────────────────────────
 
 export async function getSystemHealth() {

@@ -385,6 +385,104 @@ class HistoricalEventDetailOut(HistoricalEventOut):
     timeline: list[HistoricalReplayStep] = Field(default_factory=list)
 
 
+class HistoricalEventCreate(BaseModel):
+    """Schema to register a new historical event benchmark in the system."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    id: str
+    name: str
+    date: str
+    duration: str = "6h 00m"
+    peak_depth_cm: float = 0.0
+    flooded_roads: int = 0
+    sos_count: int = 0
+    accuracy: float = 85.0
+    description: str | None = None
+    timeline_data: list[dict] = Field(default_factory=list)
+
+
+class ZoneAccuracyMetric(BaseModel):
+    zone_name: str
+    predicted_depth_cm: float
+    observed_depth_cm: float
+    status: str  # TRUE_POSITIVE / MATCH / UNCERTAINTY
+    iou_score: float
+
+
+class GaugeValidationMetric(BaseModel):
+    gauge_id: str
+    location: str
+    observed_level_m: float
+    predicted_level_m: float
+    error_cm: float
+    status: str  # VALIDATED / DEVIATION
+
+
+class ModelBenchmarkCompareOut(BaseModel):
+    """Deep AI model performance benchmarking vs ground truth observations."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    event_id: str
+    event_name: str
+    date: str
+    spatial_iou: float
+    f1_dice_score: float
+    critical_success_index: float
+    depth_mae_cm: float
+    depth_rmse_cm: float
+    lead_time_advantage_min: float
+    probability_of_detection: float
+    false_alarm_ratio: float
+    critical_roads_match_pct: float
+    zone_breakdown: list[ZoneAccuracyMetric] = Field(default_factory=list)
+    gauge_telemetry: list[GaugeValidationMetric] = Field(default_factory=list)
+
+
+class ReplaySimulationGISFrame(BaseModel):
+    """Geospatially rich simulation timestep for GIS replay."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    frame_index: int = 0
+    time: str
+    elapsed_minutes: int
+    depth_cm: float
+    rainfall_mm_hr: float
+    flooded_roads_count: int
+    sos_count: int
+    model_accuracy_pct: float
+    active_hazard_areas: list[str] = Field(default_factory=list)
+    milestone_event: str | None = None
+    observed_depth_cm: float
+    observed_iou: float
+
+
+class ReplaySimulationOut(BaseModel):
+    """Complete simulation dataset for an event."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    event_id: str
+    event_name: str
+    duration: str
+    total_frames: int
+    frames: list[dict] = Field(default_factory=list)
+
+
+class AggregateBenchmarkOut(BaseModel):
+    """Summary of model validation benchmarks across all archived events."""
+
+    total_events: int
+    mean_model_accuracy_pct: float
+    mean_spatial_iou: float
+    mean_depth_mae_cm: float
+    lead_time_advance_min: float
+    benchmark_status: str
+    events: list[HistoricalEventOut] = Field(default_factory=list)
+
+
 # ─── 13. System Health & Diagnostics ──────────────────────────────────────────
 
 

@@ -178,7 +178,7 @@ async def run_all_tests():
         assert res.status_code == 200
         print(f"  [PASS] GET /api/v1/scenario/presets ({len(res.json())} presets)")
 
-        # 14. Historical Replay
+        # 14. Historical Replay & Validation
         res = await client.get("/api/v1/replay/events")
         assert res.status_code == 200
         events = res.json()
@@ -190,6 +190,24 @@ async def run_all_tests():
         assert res.status_code == 200
         assert len(res.json()["timeline"]) > 0
         print(f"  [PASS] GET /api/v1/replay/events/{event_id} ({len(res.json()['timeline'])} frames)")
+
+        res = await client.get("/api/v1/replay/benchmarks")
+        assert res.status_code == 200
+        assert res.json()["total_events"] >= 3
+        print(f"  [PASS] GET /api/v1/replay/benchmarks (Mean Acc: {res.json()['mean_model_accuracy_pct']}%, Status: {res.json()['benchmark_status']})")
+
+        res = await client.get(f"/api/v1/replay/events/{event_id}/compare")
+        assert res.status_code == 200
+        comp_data = res.json()
+        assert comp_data["spatial_iou"] > 0
+        assert len(comp_data["zone_breakdown"]) > 0
+        print(f"  [PASS] GET /api/v1/replay/events/{event_id}/compare (IoU: {comp_data['spatial_iou']}, MAE: {comp_data['depth_mae_cm']}cm, Lead: +{comp_data['lead_time_advantage_min']}m)")
+
+        res = await client.get(f"/api/v1/replay/events/{event_id}/simulation")
+        assert res.status_code == 200
+        sim_data = res.json()
+        assert sim_data["total_frames"] > 0
+        print(f"  [PASS] GET /api/v1/replay/events/{event_id}/simulation ({sim_data['total_frames']} timesteps)")
 
         # 15. System Health, KPIs, Alerts, Analytics
         res = await client.get("/api/v1/system/health")
