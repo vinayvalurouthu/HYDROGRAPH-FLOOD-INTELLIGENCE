@@ -6,7 +6,7 @@ Run: python -m uvicorn main:app --reload --port 8000
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
@@ -22,6 +22,8 @@ from routers.replay import router as replay_router
 from routers.system import router as system_router
 from routers.hotspots import router as hotspots_router
 from routers.spatial_pipeline import router as spatial_router
+from routers.auth import router as auth_router
+
 
 
 @asynccontextmanager
@@ -61,6 +63,7 @@ app.add_middleware(
 )
 
 # Register modular API routers
+app.include_router(auth_router)
 app.include_router(spatial_router)
 app.include_router(hotspots_router)
 app.include_router(flood_map_router)
@@ -73,6 +76,20 @@ app.include_router(scenarios_router)
 app.include_router(replay_router)
 app.include_router(system_router)
 
+
+from database import get_db
+from schemas import SOSCreateRequest, SOSIncidentOut, ShelterOut
+from routers.shelters import get_all_shelters
+from routers.sos import create_sos_alert
+
+@app.get("/api/shelters", response_model=list[ShelterOut], tags=["Evacuation Shelters"])
+async def api_shelters_alias(db=Depends(get_db)):
+    return await get_all_shelters(db)
+
+@app.post("/api/sos/", response_model=SOSIncidentOut, status_code=201, tags=["Emergency SOS & Dispatch"])
+@app.post("/api/sos", response_model=SOSIncidentOut, status_code=201, tags=["Emergency SOS & Dispatch"])
+async def api_sos_alias(body: SOSCreateRequest, db=Depends(get_db)):
+    return await create_sos_alert(body, db)
 
 @app.get("/", tags=["Health Check"])
 async def root():

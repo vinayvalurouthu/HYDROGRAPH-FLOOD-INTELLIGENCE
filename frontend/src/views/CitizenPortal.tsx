@@ -156,7 +156,7 @@ export default function CitizenPortal() {
           <div>
             <div className="text-[10px] text-slate-400 font-bold uppercase">DEVICE GPS GEOFENCE</div>
             <div className="text-cyan-300 font-mono">
-              {coords.lat.toFixed(4)}°N, {coords.lng.toFixed(4)}°E
+              {(coords?.lat ?? 25.5941).toFixed(4)}°N, {(coords?.lng ?? 85.1376).toFixed(4)}°E
             </div>
           </div>
           <span className={`ml-2 px-1.5 py-0.5 text-[9px] rounded font-bold ${gpsStatus === "LOCKED" ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"}`}>

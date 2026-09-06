@@ -14,6 +14,7 @@ from schemas import (
     RouteResponse,
     RouteOption,
     RouteStep,
+    LatLng,
 )
 from models import Road
 
@@ -313,3 +314,76 @@ def build_routing_response(
         recommended_shelter_id="SH-03",
         calculated_at=datetime.utcnow().strftime("%H:%M:%S UTC"),
     )
+
+
+def _resolve_location(loc) -> LatLng:
+    """Helper to resolve string name, dict, or LatLng into LatLng object."""
+    if isinstance(loc, LatLng):
+        return loc
+    if isinstance(loc, dict):
+        return LatLng(lat=loc.get("lat", 25.6020), lng=loc.get("lng", 85.1376))
+    if isinstance(loc, str):
+        loc_lower = loc.lower()
+        for node_id, data in PATNA_NODES.items():
+            if loc_lower in node_id.lower() or loc_lower in data["name"].lower():
+                return LatLng(lat=data["lat"], lng=data["lng"])
+    return LatLng(lat=25.6020, lng=85.1376)
+
+
+def compute_evacuation_routes(
+    req: RouteRequest | dict,
+    closed_road_ids: set[str] | None = None,
+    roads_list: list[Road] | None = None,
+) -> RouteResponse:
+    """Convenience entry point for calculating evacuation routes with optional closed roads."""
+    if isinstance(req, dict):
+        origin = _resolve_location(req.get("origin"))
+        destination = _resolve_location(req.get("destination"))
+        req_obj = RouteRequest(
+            origin=origin,
+            destination=destination,
+            vehicle_type=req.get("vehicle_type", "Rescue Van"),
+            avoid_flooded=req.get("avoid_flooded", True),
+            max_depth_cm=req.get("max_depth_cm", 30.0),
+        )
+    else:
+        origin = _resolve_location(req.origin)
+        destination = _resolve_location(req.destination)
+        req_obj = RouteRequest(
+            origin=origin,
+            destination=destination,
+            vehicle_type=req.vehicle_type,
+            avoid_flooded=req.avoid_flooded,
+            max_depth_cm=req.max_depth_cm,
+        )
+
+    if roads_list is None:
+        roads_list = []
+        for u, v, road_id, dist_km, speed_kmh in ROAD_EDGES:
+            is_closed = True if (closed_road_ids and road_id in closed_road_ids) else False
+            depth_cm = 80.0 if is_closed else 0.0
+            road = Road(
+                id=road_id,
+                name=f"Corridor {road_id}",
+                depth_cm=depth_cm,
+                peak_depth_cm=depth_cm,
+                velocity_ms=1.2 if is_closed else 0.0,
+                duration_min=0,
+                time_to_flood_min=60,
+                confidence_pct=90.0,
+                rainfall_mm_hr=0.0,
+                drain_util_pct=50.0,
+                is_closed=is_closed,
+                risk_level="HIGH" if is_closed else "LOW",
+                lat=PATNA_NODES.get(u, {}).get("lat", 25.6020),
+                lng=PATNA_NODES.get(u, {}).get("lng", 85.1376),
+            )
+            roads_list.append(road)
+    elif closed_road_ids:
+        for r in roads_list:
+            if r.id in closed_road_ids:
+                r.is_closed = True
+                r.depth_cm = max(r.depth_cm, 80.0)
+
+    return build_routing_response(req_obj, roads_list)
+

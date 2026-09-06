@@ -11,4 +11,7 @@ geoalchemy2==0.15.2
 imdlib
 pyscancf
 pysteps
+pyjwt==2.13.0
+python-multipart==0.0.32
+
 

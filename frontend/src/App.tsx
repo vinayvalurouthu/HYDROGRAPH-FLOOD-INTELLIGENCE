@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Map,
@@ -23,6 +24,7 @@ import {
   WifiOff,
   Radio,
   Compass,
+  LogOut,
 } from "lucide-react";
 import { alerts, roads, kpiData } from "./mockData";
 import type { Alert } from "./mockData";
@@ -30,6 +32,8 @@ import { PRESET_CITIES, generatePresetCityData } from "./services/cityDataGenera
 import type { CityPreset, CityFloodDataset } from "./services/cityDataGenerator";
 import { DispatchProvider } from "./context/DispatchContext";
 import { CityProvider } from "./context/CityContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
 
 // Views
@@ -46,6 +50,7 @@ import ReplayView from "./views/ReplayView";
 import SystemHealthView from "./views/SystemHealthView";
 import CitizenPortal from "./views/CitizenPortal";
 import RescueFieldView from "./views/RescueFieldView";
+import LoginView from "./views/LoginView";
 
 type NavItem = {
   id: string;
@@ -57,8 +62,6 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "citizen", label: "Citizen SOS Portal", icon: Radio, badge: "SOS", critical: true },
-  { id: "field", label: "Rescue Field Console", icon: Compass, badge: "LIVE" },
   { id: "map", label: "Live Map", icon: Map },
   { id: "hotspots", label: "Hotspots", icon: Flame, badge: 6, critical: true },
   { id: "drainage", label: "Drainage", icon: Waves },
@@ -307,7 +310,8 @@ export interface RoutingRequestPayload {
   timestamp: number;
 }
 
-export default function App() {
+function OperatorDashboardContent() {
+  const { user, role, logout } = useAuth();
   const [activeView, setActiveView] = useState("overview");
   const [activeCity, setActiveCity] = useState<CityPreset>(PRESET_CITIES[0]);
   const [cityDataset, setCityDataset] = useState<CityFloodDataset | null>(null);
@@ -389,9 +393,7 @@ export default function App() {
     d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   return (
-    <CityProvider>
-      <DispatchProvider>
-        <div className="h-screen w-screen flex flex-col overflow-hidden" style={{ background: "#07111e" }}>
+    <div className="h-screen min-h-screen w-screen flex flex-col overflow-hidden" style={{ background: "#07111e" }}>
       {/* TOP COMMAND BAR */}
       <div
         className="flex-shrink-0 flex items-center px-4 py-2 gap-4"
@@ -574,13 +576,22 @@ export default function App() {
             )}
           </button>
 
-          {/* User */}
-          <div className="flex items-center gap-1.5">
-            <UserCircle size={16} style={{ color: "#4a6080" }} />
-            <div>
-              <div className="text-[10px] font-bold text-white">Operator</div>
-              <div className="text-[8px] font-mono" style={{ color: "#4a6080" }}>MUNICIPAL</div>
+          {/* User Profile & RBAC Role Badge */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-[#1c2541] border border-cyan-500/30 px-2 py-1 rounded-lg">
+              <UserCircle size={15} className="text-cyan-400" />
+              <div>
+                <div className="text-[10px] font-bold text-white leading-none">{user?.name || "Operator"}</div>
+                <div className="text-[8px] font-mono text-cyan-300 font-bold uppercase">{role || "OPERATOR"}</div>
+              </div>
             </div>
+            <button
+              onClick={() => logout()}
+              title="Logout"
+              className="w-7 h-7 rounded-lg bg-red-950/40 border border-red-500/40 hover:bg-red-900/60 flex items-center justify-center text-red-400 transition-colors cursor-pointer"
+            >
+              <LogOut size={13} />
+            </button>
           </div>
         </div>
       </div>
@@ -641,7 +652,7 @@ export default function App() {
           </div>
 
           {/* Bottom nav */}
-          <div className="flex flex-col gap-0.5 px-1 pb-1 border-t pt-2" style={{ borderColor: "#1a2640" }}>
+          <div className="flex flex-col gap-0.5 px-1 pb-1 border-t pt-2 mt-auto" style={{ borderColor: "#1a2640" }}>
             {[
               { icon: Settings, label: "Settings" },
               { icon: UserCircle, label: "Profile" },
@@ -883,7 +894,77 @@ export default function App() {
         </div>
       </div>
     </div>
-  </DispatchProvider>
-</CityProvider>
-);
+  );
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginView />} />
+      <Route
+        path="/operator"
+        element={
+          <ProtectedRoute allowedRoles={["OPERATOR"]}>
+            <OperatorDashboardContent />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/command-base"
+        element={
+          <ProtectedRoute allowedRoles={["OPERATOR"]}>
+            <OperatorDashboardContent />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/rescue"
+        element={
+          <ProtectedRoute allowedRoles={["RESCUER", "OPERATOR"]}>
+            <RescueFieldView />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/field-console"
+        element={
+          <ProtectedRoute allowedRoles={["RESCUER", "OPERATOR"]}>
+            <RescueFieldView />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/citizen"
+        element={
+          <ProtectedRoute allowedRoles={["CITIZEN", "OPERATOR"]}>
+            <CitizenPortal />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sos-portal"
+        element={
+          <ProtectedRoute allowedRoles={["CITIZEN", "OPERATOR"]}>
+            <CitizenPortal />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <CityProvider>
+          <DispatchProvider>
+            <AppRoutes />
+          </DispatchProvider>
+        </CityProvider>
+      </AuthProvider>
+    </BrowserRouter>
+  );
 }
