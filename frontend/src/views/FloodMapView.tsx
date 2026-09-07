@@ -453,18 +453,12 @@ export default function FloodMapView({
     L.tileLayer(
       `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=${maptilerKey}`,
       {
-        attribution: '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        attribution: "",
         maxZoom: 20,
       }
     ).addTo(map);
 
-    // Attribution
-    L.control
-      .attribution({ position: "bottomright", prefix: false })
-      .addAttribution(
-        '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
-      )
-      .addTo(map);
+    // Create layer groups
 
     // Create layer groups
     const layerGroups = {
@@ -898,14 +892,22 @@ export default function FloodMapView({
         .hydro-tooltip::before { display: none !important; }
         .leaflet-container { background: #060a12 !important; }
 
-        .leaflet-control-attribution { 
-          background: rgba(5,10,20,0.8) !important;
-          color: #4a6080 !important;
-          font-size: 9px !important;
-          border-radius: 4px 0 0 0 !important;
-          padding: 2px 6px !important;
+        .leaflet-control-attribution,
+        .leaflet-bottom.leaflet-right .leaflet-control-attribution { 
+          display: none !important;
+          opacity: 0 !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
         }
-        .leaflet-control-attribution a { color: #22d3ee !important; }
+
+        .road-label-icon {
+          overflow: visible !important;
+        }
+        .road-label-icon > div {
+          transform: translate(-50%, -50%);
+          display: inline-block;
+          pointer-events: auto;
+        }
       `}</style>
 
       {/* Forecast Mode Banner */}

@@ -5,6 +5,8 @@
  * within a bounding box centered at (lat, lng) with radius (meters).
  */
 
+import { REAL_CITY_ROADS, PRESET_CITIES } from "./cityDataGenerator";
+
 export interface GeoJSONFeature<G = any, P = any> {
   type: "Feature";
   id?: string;
@@ -244,39 +246,94 @@ function generateFallbackGeoJSON(
   lng: number,
   radiusMeters: number
 ): CityGeospatialResult {
-  const d = 0.015;
-  const roads: GeoJSONFeature[] = [
-    {
+  // Check if near any of our pre-configured cities (within ~15km)
+  const matchedPreset = PRESET_CITIES.find(
+    (c) => Math.abs(c.center[0] - lat) < 0.15 && Math.abs(c.center[1] - lng) < 0.15
+  );
+
+  let roadFeatures: GeoJSONFeature[] = [];
+
+  if (matchedPreset && REAL_CITY_ROADS[matchedPreset.id]) {
+    roadFeatures = REAL_CITY_ROADS[matchedPreset.id].map((r) => ({
       type: "Feature",
+      id: `way-${r.id}`,
       geometry: {
         type: "LineString",
-        coordinates: [
-          [lng - d, lat - d],
-          [lng, lat],
-          [lng + d, lat + d],
-        ],
+        coordinates: r.coordinates,
       },
-      properties: { id: "FB-R1", name: "Main Radial Expressway", risk: "SEVERE", depthCm: 42, closed: true },
-    },
-    {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: [
-          [lng - d, lat + d],
-          [lng, lat],
-          [lng + d, lat - d],
-        ],
+      properties: {
+        id: r.id,
+        name: r.name,
+        risk: r.risk,
+        depthCm: r.depth,
+        peakDepthCm: Math.round(r.depth * 1.3),
+        velocityMs: r.vel,
+        closed: r.closed,
       },
-      properties: { id: "FB-R2", name: "Central River Corridor", risk: "HIGH", depthCm: 28, closed: false },
-    },
-  ];
+    }));
+  } else {
+    // Orthogonal grid street features aligned with cardinal directions
+    const d = 0.015;
+    roadFeatures = [
+      {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [lng - d * 1.5, lat],
+            [lng, lat],
+            [lng + d * 1.5, lat],
+          ],
+        },
+        properties: { id: "FB-R1", name: "Main Central Arterial", risk: "SEVERE", depthCm: 45, closed: true },
+      },
+      {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [lng, lat - d * 1.5],
+            [lng, lat],
+            [lng, lat + d * 1.5],
+          ],
+        },
+        properties: { id: "FB-R2", name: "Central North-South Avenue", risk: "HIGH", depthCm: 32, closed: false },
+      },
+      {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [lng - d * 1.2, lat + d * 0.7],
+            [lng + d * 1.2, lat + d * 0.7],
+          ],
+        },
+        properties: { id: "FB-R3", name: "Northern Bypass Road", risk: "MODERATE", depthCm: 20, closed: false },
+      },
+      {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [lng - d * 1.2, lat - d * 0.7],
+            [lng + d * 1.2, lat - d * 0.7],
+          ],
+        },
+        properties: { id: "FB-R4", name: "Southern Ring Road", risk: "HIGH", depthCm: 36, closed: false },
+      },
+    ];
+  }
 
   const shelters: GeoJSONFeature[] = [
     {
       type: "Feature",
       geometry: { type: "Point", coordinates: [lng + 0.008, lat + 0.008] },
       properties: { id: "FB-SH1", name: "Central Relief Center", amenity: "community_centre", capacity: 600, occupancy: 210, status: "OPEN" },
+    },
+    {
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [lng - 0.009, lat - 0.006] },
+      properties: { id: "FB-SH2", name: "District Emergency Shelter", amenity: "school", capacity: 450, occupancy: 180, status: "OPEN" },
     },
   ];
 
@@ -286,13 +343,18 @@ function generateFallbackGeoJSON(
       geometry: { type: "Point", coordinates: [lng - 0.006, lat + 0.004] },
       properties: { id: "FB-DN1", name: "Main Basin Sluice Gate", status: "STRESSED", flowRateM3s: 12.4 },
     },
+    {
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [lng + 0.007, lat - 0.005] },
+      properties: { id: "FB-DN2", name: "Central Stormwater Pumping Station", status: "CRITICAL", flowRateM3s: 18.2 },
+    },
   ];
 
   return {
-    roadsGeoJSON: { type: "FeatureCollection", features: roads },
+    roadsGeoJSON: { type: "FeatureCollection", features: roadFeatures },
     sheltersGeoJSON: { type: "FeatureCollection", features: shelters },
     drainageGeoJSON: { type: "FeatureCollection", features: drainage },
-    rawElementsCount: 4,
+    rawElementsCount: roadFeatures.length + shelters.length + drainage.length,
     source: "FALLBACK_SIMULATION",
   };
 }
