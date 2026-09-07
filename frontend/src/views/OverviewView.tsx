@@ -57,7 +57,7 @@ function KPICard({
   sub: string;
   trend?: "up" | "down" | "neutral";
   color: "red" | "amber" | "teal" | "cyan" | "green" | "blue";
-  icon: React.ElementType;
+  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; className?: string }>;
   chart?: React.ReactNode;
 }) {
   const colorMap = {

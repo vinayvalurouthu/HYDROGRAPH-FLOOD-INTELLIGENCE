@@ -59,7 +59,7 @@ import LoginView from "./views/LoginView";
 type NavItem = {
   id: string;
   label: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; className?: string }>;
   badge?: number | string;
   critical?: boolean;
 };
