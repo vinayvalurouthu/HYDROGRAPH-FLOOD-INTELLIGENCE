@@ -49,8 +49,8 @@ export default function RescueFieldView() {
       elderly: 1,
       medical: true,
       waterDepthM: 1.8,
-      lat: currentCity.lat + 0.006,
-      lng: currentCity.lng + 0.004,
+      lat: (currentCity.lat ?? currentCity.center?.[0] ?? 25.5941) + 0.006,
+      lng: (currentCity.lng ?? currentCity.center?.[1] ?? 85.1376) + 0.004,
       priority: "CRITICAL",
       status: "ASSIGNED"
     };

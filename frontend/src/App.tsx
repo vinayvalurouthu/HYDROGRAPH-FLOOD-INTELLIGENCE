@@ -31,9 +31,10 @@ import type { Alert } from "./mockData";
 import { PRESET_CITIES, generatePresetCityData } from "./services/cityDataGenerator";
 import type { CityPreset, CityFloodDataset } from "./services/cityDataGenerator";
 import { DispatchProvider } from "./context/DispatchContext";
-import { CityProvider } from "./context/CityContext";
+import { CityProvider, useCityContext } from "./context/CityContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
 
 // Views
@@ -312,9 +313,9 @@ export interface RoutingRequestPayload {
 
 function OperatorDashboardContent() {
   const { user, role, logout } = useAuth();
+  const { selectedCity, setSelectedCity, cityDataset, setCityDataset, selectCity } = useCityContext();
   const [activeView, setActiveView] = useState("overview");
-  const [activeCity, setActiveCity] = useState<CityPreset>(PRESET_CITIES[0]);
-  const [cityDataset, setCityDataset] = useState<CityFloodDataset | null>(null);
+  const activeCity = selectedCity;
   const [selectedRoad, setSelectedRoad] = useState<string | null>(null);
   const [routingRequest, setRoutingRequest] = useState<RoutingRequestPayload | null>(null);
   const [timelineIndex, setTimelineIndex] = useState(0);
@@ -326,15 +327,11 @@ function OperatorDashboardContent() {
   const { isConnected: isNetworkConnected, isMeshSimulated, toggleMeshSimulation, isSyncing } = useNetworkStatus();
 
   const handleCityChange = (city: CityPreset) => {
-    setActiveCity(city);
-    const newDataset = generatePresetCityData(city);
-    setCityDataset(newDataset);
+    selectCity(city);
     setLocationDropdownOpen(false);
   };
 
   useEffect(() => {
-    const initialDataset = generatePresetCityData(PRESET_CITIES[0]);
-    setCityDataset(initialDataset);
     const t = setInterval(() => setLiveTime(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -678,59 +675,62 @@ function OperatorDashboardContent() {
         <div className="flex-1 flex overflow-hidden relative">
           {/* View area */}
           <div className="flex-1 overflow-hidden relative">
-            {activeView === "overview" && (
-              <OverviewView
-                onNavigate={handleNavigate}
-                activeCity={activeCity}
-                cityDataset={cityDataset}
-                onCityChange={handleCityChange}
-              />
-            )}
-            {activeView === "map" && (
-              <FloodMapView
-                selectedRoadId={selectedRoad ?? undefined}
-                onRoadSelect={(id) => setSelectedRoad(id)}
-                timelineIndex={timelineIndex}
-                onTimelineChange={setTimelineIndex}
-                onCloseRoad={(id) => setClosedRoads((p) => new Set(p).add(id))}
-                activeCity={activeCity}
-                cityDataset={cityDataset}
-                onCityChange={setActiveCity}
-                onCityDatasetChange={setCityDataset}
-              />
-            )}
-            {activeView === "hotspots" && (
-              <HotspotsView
-                onNavigate={handleNavigate}
-                cityDataset={cityDataset}
-                onReportIssue={handleReportIssue}
-              />
-            )}
-            {activeView === "drainage" && (
-              <DrainageView cityDataset={cityDataset} activeCity={activeCity} />
-            )}
-            {activeView === "routing" && (
-              <RoutingView
-                activeCity={activeCity}
-                cityDataset={cityDataset}
-                routingRequest={routingRequest}
-              />
-            )}
-            {activeView === "shelters" && <SheltersView onNavigate={handleNavigate} />}
-            {activeView === "sos" && (
-              <SOSView
-                onNavigate={handleNavigate}
-                onAssignTeam={(sosId, teamId) => {
-                  console.log("Assigned", teamId, "to", sosId);
-                }}
-              />
-            )}
-            {activeView === "rescue" && <RescueView />}
-            {activeView === "citizen" && <CitizenPortal />}
-            {activeView === "field" && <RescueFieldView />}
-            {activeView === "scenarios" && <ScenariosView activeCity={activeCity} cityDataset={cityDataset} />}
-            {activeView === "replay" && <ReplayView />}
-            {activeView === "health" && <SystemHealthView />}
+            <ErrorBoundary fallbackTitle="View Rendering Error" onReset={() => setActiveView("overview")}>
+              {activeView === "overview" && (
+                <OverviewView
+                  onNavigate={handleNavigate}
+                  activeCity={activeCity}
+                  cityDataset={cityDataset}
+                  onCityChange={handleCityChange}
+                />
+              )}
+              {activeView === "map" && (
+                <FloodMapView
+                  selectedRoadId={selectedRoad ?? undefined}
+                  onRoadSelect={(id) => setSelectedRoad(id)}
+                  timelineIndex={timelineIndex}
+                  onTimelineChange={setTimelineIndex}
+                  onCloseRoad={(id) => setClosedRoads((p) => new Set(p).add(id))}
+                  activeCity={selectedCity}
+                  cityDataset={cityDataset}
+                  onCityChange={selectCity}
+                  onCityDatasetChange={setCityDataset}
+                />
+              )}
+              {activeView === "hotspots" && (
+                <HotspotsView
+                  onNavigate={handleNavigate}
+                  activeCity={selectedCity}
+                  cityDataset={cityDataset}
+                  onReportIssue={handleReportIssue}
+                />
+              )}
+              {activeView === "drainage" && (
+                <DrainageView cityDataset={cityDataset} activeCity={activeCity} />
+              )}
+              {activeView === "routing" && (
+                <RoutingView
+                  activeCity={activeCity}
+                  cityDataset={cityDataset}
+                  routingRequest={routingRequest}
+                />
+              )}
+              {activeView === "shelters" && <SheltersView onNavigate={handleNavigate} />}
+              {activeView === "sos" && (
+                <SOSView
+                  onNavigate={handleNavigate}
+                  onAssignTeam={(sosId, teamId) => {
+                    console.log("Assigned", teamId, "to", sosId);
+                  }}
+                />
+              )}
+              {activeView === "rescue" && <RescueView />}
+              {activeView === "citizen" && <CitizenPortal />}
+              {activeView === "field" && <RescueFieldView />}
+              {activeView === "scenarios" && <ScenariosView activeCity={activeCity} cityDataset={cityDataset} />}
+              {activeView === "replay" && <ReplayView />}
+              {activeView === "health" && <SystemHealthView />}
+            </ErrorBoundary>
           </div>
 
           {/* Right panel — road intelligence */}
@@ -899,59 +899,61 @@ function OperatorDashboardContent() {
 
 function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginView />} />
-      <Route
-        path="/operator"
-        element={
-          <ProtectedRoute allowedRoles={["OPERATOR"]}>
-            <OperatorDashboardContent />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/command-base"
-        element={
-          <ProtectedRoute allowedRoles={["OPERATOR"]}>
-            <OperatorDashboardContent />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/rescue"
-        element={
-          <ProtectedRoute allowedRoles={["RESCUER", "OPERATOR"]}>
-            <RescueFieldView />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/field-console"
-        element={
-          <ProtectedRoute allowedRoles={["RESCUER", "OPERATOR"]}>
-            <RescueFieldView />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/citizen"
-        element={
-          <ProtectedRoute allowedRoles={["CITIZEN", "OPERATOR"]}>
-            <CitizenPortal />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/sos-portal"
-        element={
-          <ProtectedRoute allowedRoles={["CITIZEN", "OPERATOR"]}>
-            <CitizenPortal />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+    <ErrorBoundary fallbackTitle="Application Routing Error">
+      <Routes>
+        <Route path="/login" element={<LoginView />} />
+        <Route
+          path="/operator"
+          element={
+            <ProtectedRoute allowedRoles={["OPERATOR"]}>
+              <OperatorDashboardContent />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/command-base"
+          element={
+            <ProtectedRoute allowedRoles={["OPERATOR"]}>
+              <OperatorDashboardContent />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/rescue"
+          element={
+            <ProtectedRoute allowedRoles={["RESCUER", "OPERATOR"]}>
+              <RescueFieldView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/field-console"
+          element={
+            <ProtectedRoute allowedRoles={["RESCUER", "OPERATOR"]}>
+              <RescueFieldView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/citizen"
+          element={
+            <ProtectedRoute allowedRoles={["CITIZEN", "OPERATOR"]}>
+              <CitizenPortal />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sos-portal"
+          element={
+            <ProtectedRoute allowedRoles={["CITIZEN", "OPERATOR"]}>
+              <CitizenPortal />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </ErrorBoundary>
   );
 }
 

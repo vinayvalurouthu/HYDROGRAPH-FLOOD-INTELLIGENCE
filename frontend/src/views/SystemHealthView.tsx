@@ -468,7 +468,7 @@ export default function SystemHealthView() {
                     <div className="flex items-center gap-6">
                       <div>
                         <span className="text-[#64748b] text-[9px] block">SUBSYSTEM DOMAIN</span>
-                        <b className="text-white">{svc.componentType || "Disaster Pipeline"}</b>
+                        <b className="text-white">{(svc as any).componentType || "Disaster Pipeline"}</b>
                       </div>
                       <div>
                         <span className="text-[#64748b] text-[9px] block">DATA FRESHNESS</span>

@@ -537,7 +537,7 @@ export async function getHistoricalEventDetail(eventId: string) {
   });
 }
 
-export async function getHistoricalEventCompare(eventId: string) {
+export async function getHistoricalEventCompare(eventId: string): Promise<any> {
   return fetchJSON(`${API_BASE}/v1/replay/events/${eventId}/compare`, undefined, null);
 }
 
@@ -562,7 +562,7 @@ export async function getSystemHealth() {
   });
 }
 
-export async function retestSystemHealth() {
+export async function retestSystemHealth(): Promise<any> {
   return fetchJSON(`${API_BASE}/v1/system/retest`, { method: "POST" }, null);
 }
 

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev:frontend": "vite --host 0.0.0.0",
-    "dev:backend": "cd ../backend && python -m uvicorn main:app --reload --port 8000",
+    "dev:backend": "cd ../backend && python -m uvicorn main:app --reload --reload-exclude \"venv*\" --port 8000",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "test": "vitest run",
     "build": "vite build",

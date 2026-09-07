@@ -216,7 +216,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           let sosStatus: SOSIncident["status"] = s.status;
           if (newStatus === "EN_ROUTE") sosStatus = "EN_ROUTE";
           if (newStatus === "ON_SCENE") sosStatus = "EN_ROUTE";
-          if (newStatus === "RESCUED") sosStatus = "RESCUED";
+          if (newStatus === "RETURNING") sosStatus = "RESCUED";
           return { ...s, status: sosStatus };
         }
         return s;

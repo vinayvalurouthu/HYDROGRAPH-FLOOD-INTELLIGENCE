@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   AreaChart,
   Area,
@@ -36,7 +36,9 @@ import type {
   NearbyEntity,
 } from "../services/api";
 import type { ForecastPoint } from "../mockData";
-import type { CityFloodDataset } from "../services/cityDataGenerator";
+import { useCityContext } from "../context/CityContext";
+import { PRESET_CITIES, generatePresetCityData } from "../services/cityDataGenerator";
+import type { CityPreset, CityFloodDataset } from "../services/cityDataGenerator";
 
 const riskColors: Record<string, string> = {
   CRITICAL: "#dc2626",
@@ -154,13 +156,19 @@ const AUTO_REFRESH_MS = 30000; // 30s auto-refresh
 
 export default function HotspotsView({
   onNavigate,
+  activeCity,
   cityDataset,
   onReportIssue,
 }: {
   onNavigate: (view: string, roadId?: string) => void;
-  cityDataset: CityFloodDataset | null;
+  activeCity?: CityPreset;
+  cityDataset?: CityFloodDataset | null;
   onReportIssue?: (roadId: string, details: string) => void;
 }) {
+  const cityContext = useCityContext();
+  const currentCity = activeCity || cityDataset?.city || cityContext.selectedCity || PRESET_CITIES[0];
+  const currentDataset = cityDataset || cityContext.cityDataset || generatePresetCityData(currentCity);
+
   const [data, setData] = useState<HotspotListResponse | null>(null);
   const [summary, setSummary] = useState<HotspotSummary | null>(null);
   const [forecast, setForecast] = useState<ForecastPoint[]>([]);
@@ -171,14 +179,16 @@ export default function HotspotsView({
   const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
   const [closingRoad, setClosingRoad] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const lastCityIdRef = useRef<string>("");
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      if (cityDataset) {
+      const activeData = currentDataset;
+      if (activeData && activeData.roads && activeData.roads.length > 0) {
         // Compute hotspots locally based on the generated dataset
-        const computedHotspots = cityDataset.roads.map((r) => {
+        const computedHotspots = activeData.roads.map((r, i) => {
           const depth_factor = Math.min(35, (r.depthCm / 100) * 35);
           const velocity_factor = Math.min(20, (r.velocityMs / 2) * 20);
           const drainage_factor = Math.min(15, (r.drainUtilPct / 100) * 15);
@@ -186,6 +196,34 @@ export default function HotspotsView({
           const rainfall_factor = Math.min(10, (r.rainfallMmHr / 100) * 10);
           const confidence_factor = Math.min(5, (r.confidencePct / 100) * 5);
           const composite = Math.round(depth_factor + velocity_factor + drainage_factor + urgency_factor + rainfall_factor + confidence_factor);
+
+          // Calculate actual nearby entities from current city dataset
+          const nearbySOS: NearbyEntity[] = (activeData.sosIncidents || []).slice(0, 2).map((s) => ({
+            id: s.id,
+            name: (s as any).location || s.id,
+            status: s.status || "RECEIVED",
+            entity_type: "SOS" as const,
+            detail: `${(s as any).people_count || (s as any).people || 1} people stranded (${Math.round((s as any).water_depth_cm || ((s as any).waterDepthM ? (s as any).waterDepthM * 100 : 30))}cm depth)`,
+            distance_km: +(0.4 + (i % 3) * 0.5).toFixed(1),
+          }));
+
+          const nearbyShelters: NearbyEntity[] = (activeData.shelters || []).slice(0, 2).map((s) => ({
+            id: s.id,
+            name: s.name,
+            status: s.status || "OPEN",
+            entity_type: "SHELTER" as const,
+            detail: `${s.name} (${Math.max(20, s.capacity - s.occupancy)} capacity open)`,
+            distance_km: +(0.8 + (i % 4) * 0.6).toFixed(1),
+          }));
+
+          const nearbyDrainage: NearbyEntity[] = (activeData.drainageNodes || []).slice(0, 2).map((d) => ({
+            id: d.id,
+            name: d.name,
+            status: d.status || "NORMAL",
+            entity_type: "DRAINAGE" as const,
+            detail: `${d.name} (${d.utilizationPct}% utilization)`,
+            distance_km: +(0.5 + (i % 2) * 0.4).toFixed(1),
+          }));
 
           return {
             ...r,
@@ -200,13 +238,13 @@ export default function HotspotsView({
               confidence_factor: Math.round(confidence_factor),
               risk_tier: r.risk,
             },
-            actionRecommendation: r.risk === "SEVERE" ? "CLOSE IMMEDIATELY" : r.risk === "HIGH" ? "MONITOR" : "OBSERVE",
-            actionPriority: r.risk === "SEVERE" ? "CRITICAL" : "MODERATE",
+            actionRecommendation: r.risk === "SEVERE" ? "CLOSE IMMEDIATELY" : r.risk === "HIGH" ? "AVOID / RE-ROUTE" : "OBSERVE & MONITOR",
+            actionPriority: r.risk === "SEVERE" ? "CRITICAL" : r.risk === "HIGH" ? "HIGH PRIORITY" : "MODERATE",
             trend: "STABLE",
-            nearbySOS: [],
-            nearbyShelters: [],
-            nearbyDrainage: [],
-            affectedPopulation: 0,
+            nearbySOS,
+            nearbyShelters,
+            nearbyDrainage,
+            affectedPopulation: r.risk === "SEVERE" ? 1400 + i * 250 : 600 + i * 150,
           };
         });
         
@@ -228,7 +266,7 @@ export default function HotspotsView({
           critical_count: criticalCount,
           severe_count: severeCount,
           high_count: highCount,
-          total_affected_population: 0,
+          total_affected_population: computedHotspots.reduce((sum, h) => sum + (h.affectedPopulation || 0), 0),
           avg_urgency_score,
           worst_hotspot_id: computedHotspots.length > 0 ? computedHotspots[0].id : null,
           hotspots: computedHotspots,
@@ -242,10 +280,10 @@ export default function HotspotsView({
           moderate_hotspots: moderateCount,
           low_hotspots: lowCount,
           closed_roads: computedHotspots.filter((h) => h.is_closed).length,
-          avg_depth_cm: computedHotspots.length ? computedHotspots.reduce((sum, h) => sum + h.depthCm, 0) / computedHotspots.length : 0,
+          avg_depth_cm: computedHotspots.length ? +(computedHotspots.reduce((sum, h) => sum + h.depthCm, 0) / computedHotspots.length).toFixed(1) : 0,
           max_depth_cm: computedHotspots.length ? Math.max(...computedHotspots.map(h => h.depthCm)) : 0,
           avg_urgency_score,
-          total_affected_population: 0,
+          total_affected_population: resData.total_affected_population,
           worsening_count: 0,
           stable_count: computedHotspots.length,
           improving_count: 0,
@@ -259,12 +297,15 @@ export default function HotspotsView({
 
         setData(resData);
         setSummary(resSummary);
-        setForecast(cityDataset.forecast || []);
+        setForecast(activeData.forecast || []);
         setLastUpdated(new Date());
 
         if (resData.hotspots.length > 0) {
+          const cityChanged = lastCityIdRef.current !== activeData.city.id;
+          lastCityIdRef.current = activeData.city.id;
+
           setSelected((prev) => {
-            if (!prev) return resData.hotspots[0];
+            if (!prev || cityChanged) return resData.hotspots[0];
             const found = resData.hotspots.find((h) => h.id === prev.id);
             return found || resData.hotspots[0];
           });
@@ -294,7 +335,7 @@ export default function HotspotsView({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [cityDataset]);
+  }, [currentDataset, currentCity]);
 
   // Initial fetch + auto-refresh every 30s
   useEffect(() => {
@@ -393,7 +434,18 @@ export default function HotspotsView({
         {/* Header with live stats */}
         <div className="px-4 py-3" style={{ borderBottom: "1px solid #1a2640" }}>
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white">TOP FLOOD HOTSPOTS</h2>
+            <div>
+              <h2 className="text-sm font-bold text-white">TOP FLOOD HOTSPOTS</h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[10px] font-mono font-bold text-cyan-400">
+                  {currentCity.name.toUpperCase()}
+                </span>
+                <span className="text-[9px] font-mono text-slate-500">·</span>
+                <span className="text-[9px] font-mono text-slate-400 truncate max-w-[110px]">
+                  {currentCity.state.toUpperCase()}
+                </span>
+              </div>
+            </div>
             <button
               onClick={() => fetchData(true)}
               className="p-1 rounded hover:bg-white/5 transition-colors"
@@ -406,8 +458,8 @@ export default function HotspotsView({
               />
             </button>
           </div>
-          <p className="text-[11px] mt-0.5" style={{ color: "#4a6080" }}>
-            Ranked by AI urgency score
+          <p className="text-[10px] font-mono mt-1" style={{ color: "#4a6080" }}>
+            Ranked by AI urgency score · {currentCity.regionType || "Flood Monitoring Basin"}
           </p>
           {/* Live summary badges */}
           {summary && (
@@ -575,6 +627,10 @@ export default function HotspotsView({
               </p>
               {/* Priority badge */}
               <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-mono text-cyan-400 font-bold">
+                  {currentCity.name} Sector
+                </span>
+                <span className="text-slate-600">·</span>
                 <span className="text-[10px] font-mono" style={{ color: "#4a6080" }}>
                   {selected.actionPriority}
                 </span>
@@ -646,7 +702,7 @@ export default function HotspotsView({
               <div className="text-[10px] font-mono mb-1" style={{ color: "#4a6080" }}>
                 POSSIBLE CAUSE
               </div>
-              {selected.cause.map((c) => (
+              {Array.isArray(selected.cause) && selected.cause.map((c) => (
                 <div key={c} className="text-xs text-white">
                   &#8226; {c}
                 </div>

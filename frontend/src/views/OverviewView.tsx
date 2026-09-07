@@ -230,7 +230,7 @@ export default function OverviewView({
   // SOS triage metrics
   const totalSOS = currentSOS.length;
   const unassignedSOS =
-    currentSOS.filter((s) => s.status === "RECEIVED" || s.status === "UNASSIGNED").length ||
+    currentSOS.filter((s) => s.status === "RECEIVED" || !s.assignedTeam).length ||
     Math.max(1, Math.floor(totalSOS * 0.35));
 
   // Rescue teams availability

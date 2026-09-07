@@ -27,10 +27,13 @@ export default function CitizenPortal() {
   const { selectedCity } = useCity();
   const currentCity = selectedCity || { name: "Patna", lat: 25.5941, lng: 85.1376 };
 
+  const cityLat = currentCity.lat ?? currentCity.center?.[0] ?? 25.5941;
+  const cityLng = currentCity.lng ?? currentCity.center?.[1] ?? 85.1376;
+
   // GPS Geofence state
   const [coords, setCoords] = useState<{ lat: number; lng: number }>({
-    lat: currentCity.lat,
-    lng: currentCity.lng
+    lat: cityLat,
+    lng: cityLng
   });
   const [gpsStatus, setGpsStatus] = useState<"ACQUIRING" | "LOCKED" | "FALLBACK">("ACQUIRING");
   const [landmark, setLandmark] = useState("");
@@ -55,7 +58,7 @@ export default function CitizenPortal() {
           setGpsStatus("LOCKED");
         },
         () => {
-          setCoords({ lat: currentCity.lat + 0.005, lng: currentCity.lng + 0.005 });
+          setCoords({ lat: cityLat + 0.005, lng: cityLng + 0.005 });
           setGpsStatus("FALLBACK");
         },
         { timeout: 5000 }

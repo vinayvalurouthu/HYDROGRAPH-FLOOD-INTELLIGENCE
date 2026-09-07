@@ -58,6 +58,7 @@ export interface SOSIncident {
   lng: number;
   timestamps: { status: string; time: string }[];
   assignedTeam?: string;
+  syncStatus?: "PENDING" | "SYNCED" | "FAILED" | "QUEUED_LOCALLY" | string;
 }
 
 export interface RescueTeam {

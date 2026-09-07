@@ -162,6 +162,28 @@ export default function FloodMapView({
     }
   }, [selectedCity]);
 
+  // Sync when cityDataset changes externally from top bar or other views
+  useEffect(() => {
+    if (cityDataset) {
+      setCurrentCity(cityDataset.city);
+      setLocationInput(`${cityDataset.city.name}, ${cityDataset.city.state}`);
+      setMapCenter(cityDataset.city.center);
+      setRoads(cityDataset.roads);
+      setFloodZones(cityDataset.floodZones);
+      setSosIncidents(cityDataset.sosIncidents);
+      setShelters(cityDataset.shelters);
+      setDrainageNodes(cityDataset.drainageNodes);
+      setForecast(cityDataset.forecast);
+      setDataSource(cityDataset.source);
+      if (mapRef.current) {
+        mapRef.current.flyTo(cityDataset.city.center, cityDataset.city.zoom || DEFAULT_ZOOM, {
+          duration: 1.5,
+          easeLinearity: 0.25,
+        });
+      }
+    }
+  }, [cityDataset]);
+
   // Sync GeoJSON feature collections from Overpass API into Leaflet render state
   useEffect(() => {
     if (!selectedCity) return;
@@ -244,6 +266,9 @@ export default function FloodMapView({
             waterLevelM: 1.2,
             lat: f.geometry?.coordinates?.[1] || selectedCity.center[0],
             lng: f.geometry?.coordinates?.[0] || selectedCity.center[1],
+            confidencePct: 85,
+            x: 0,
+            y: 0,
           }))
         );
       } else {
@@ -274,15 +299,22 @@ export default function FloodMapView({
     setDrainageNodes(dataset.drainageNodes);
     setForecast(dataset.forecast);
     setSelectedCity({ ...dataset.city, radius: 5000 });
+    if (mapRef.current) {
+      mapRef.current.flyTo(dataset.city.center, dataset.city.zoom || DEFAULT_ZOOM, {
+        duration: 1.5,
+        easeLinearity: 0.25,
+      });
+    }
   }, [onCityChange, onCityDatasetChange, setSelectedCity]);
 
-  // Preset selector updating City Context
+  // Preset selector updating City Context & parent components
   const selectPresetCity = useCallback((cityId: string) => {
     const preset = PRESET_CITIES.find((c) => c.id === cityId);
     if (!preset) return;
-    setSelectedCity({ ...preset, radius: 5000 });
+    const dataset = generatePresetCityData(preset);
+    applyCityDataset(dataset);
     setCityDropdownOpen(false);
-  }, [setSelectedCity]);
+  }, [applyCityDataset]);
 
   // Search any location worldwide via Geocoding + Overpass + Simulation Fallback
   const searchLocation = async (query: string) => {
@@ -369,6 +401,43 @@ export default function FloodMapView({
     loadData();
   }, [currentCity.id, timelineIndex]);
 
+  // Map click interaction to target / switch operational center directly from map
+  const handleMapClickRef = useRef<(lat: number, lng: number) => void>(() => {});
+  const handleMapClick = useCallback(async (lat: number, lng: number) => {
+    setIsSearchingLocation(true);
+    setSearchStatusMsg("Focusing disaster intelligence on coordinates...");
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      const address = data?.address || {};
+      const placeName = address.city || address.town || address.village || address.suburb || address.county || "Micro-Zone";
+      const stateName = address.state || address.region || "Operational Grid";
+
+      const dataset = await fetchOsmCityData(lat, lng, placeName, stateName);
+      applyCityDataset(dataset);
+    } catch {
+      const customCity: CityPreset = {
+        id: `loc-${lat.toFixed(3)}-${lng.toFixed(3)}`,
+        name: `Zone [${lat.toFixed(3)}, ${lng.toFixed(3)}]`,
+        state: "Command Grid",
+        regionType: "Targeted Micro-Catchment Zone",
+        center: [lat, lng],
+        zoom: 14,
+        rainfallMmHr: 85,
+        waterBody: "Local Catchment Basin",
+      };
+      const dataset = generatePresetCityData(customCity);
+      applyCityDataset(dataset);
+    } finally {
+      setIsSearchingLocation(false);
+      setSearchStatusMsg("");
+    }
+  }, [applyCityDataset]);
+
+  useEffect(() => {
+    handleMapClickRef.current = handleMapClick;
+  }, [handleMapClick]);
+
   // Initialize Leaflet map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -405,6 +474,14 @@ export default function FloodMapView({
       shelters: L.layerGroup().addTo(map),
       drainage: L.layerGroup().addTo(map),
     };
+
+    map.on("click", (e: L.LeafletMouseEvent) => {
+      const target = (e.originalEvent?.target as HTMLElement);
+      if (target && target.closest && (target.closest(".leaflet-interactive") || target.closest(".leaflet-popup") || target.closest("button"))) {
+        return;
+      }
+      handleMapClickRef.current?.(e.latlng.lat, e.latlng.lng);
+    });
 
     mapRef.current = map;
     layerGroupsRef.current = layerGroups;
