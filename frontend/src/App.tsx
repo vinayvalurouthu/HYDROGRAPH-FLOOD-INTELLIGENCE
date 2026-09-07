@@ -33,9 +33,12 @@ import type { CityPreset, CityFloodDataset } from "./services/cityDataGenerator"
 import { DispatchProvider } from "./context/DispatchContext";
 import { CityProvider, useCityContext } from "./context/CityContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { SettingsProvider } from "./context/SettingsContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
+import SettingsModal from "./components/SettingsModal";
+import ProfileModal from "./components/ProfileModal";
 
 // Views
 import OverviewView from "./views/OverviewView";
@@ -312,6 +315,7 @@ export interface RoutingRequestPayload {
 }
 
 function OperatorDashboardContent() {
+  const navigate = useNavigate();
   const { user, role, logout } = useAuth();
   const { selectedCity, setSelectedCity, cityDataset, setCityDataset, selectCity } = useCityContext();
   const [activeView, setActiveView] = useState("overview");
@@ -324,6 +328,8 @@ function OperatorDashboardContent() {
   const [liveTime, setLiveTime] = useState(new Date());
   const [closedRoads, setClosedRoads] = useState<Set<string>>(new Set());
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const { isConnected: isNetworkConnected, isMeshSimulated, toggleMeshSimulation, isSyncing } = useNetworkStatus();
 
   const handleCityChange = (city: CityPreset) => {
@@ -575,13 +581,17 @@ function OperatorDashboardContent() {
 
           {/* User Profile & RBAC Role Badge */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 bg-[#1c2541] border border-cyan-500/30 px-2 py-1 rounded-lg">
-              <UserCircle size={15} className="text-cyan-400" />
+            <button
+              onClick={() => setShowProfileModal(true)}
+              title="Click to view Personnel Dossier, Clearance Level & Role Switcher"
+              className="flex items-center gap-1.5 bg-[#1c2541] hover:bg-[#253358] border border-cyan-500/30 hover:border-cyan-400/60 px-2 py-1 rounded-lg transition-all cursor-pointer text-left group"
+            >
+              <UserCircle size={15} className="text-cyan-400 group-hover:scale-110 transition-transform" />
               <div>
-                <div className="text-[10px] font-bold text-white leading-none">{user?.name || "Operator"}</div>
+                <div className="text-[10px] font-bold text-white leading-none group-hover:text-cyan-200 transition-colors">{user?.name || "Operator"}</div>
                 <div className="text-[8px] font-mono text-cyan-300 font-bold uppercase">{role || "OPERATOR"}</div>
               </div>
-            </div>
+            </button>
             <button
               onClick={() => logout()}
               title="Logout"
@@ -649,22 +659,53 @@ function OperatorDashboardContent() {
           </div>
 
           {/* Bottom nav */}
-          <div className="flex flex-col gap-0.5 px-1 pb-1 border-t pt-2 mt-auto" style={{ borderColor: "#1a2640" }}>
+          <div className="flex flex-col gap-1 px-1 pb-1 border-t pt-2 mt-auto" style={{ borderColor: "#1a2640" }}>
             {[
-              { icon: Settings, label: "Settings" },
-              { icon: UserCircle, label: "Profile" },
-            ].map(({ icon: Icon, label }) => (
+              {
+                icon: Settings,
+                label: "Settings",
+                sublabel: "Sensors, Alarms & UI Units",
+                onClick: () => setShowSettingsModal(true),
+                isActive: showSettingsModal,
+              },
+              {
+                icon: UserCircle,
+                label: "Profile",
+                sublabel: "Officer Dossier & Role Clearance",
+                onClick: () => setShowProfileModal(true),
+                isActive: showProfileModal,
+              },
+            ].map(({ icon: Icon, label, sublabel, onClick, isActive }) => (
               <button
                 key={label}
+                onClick={onClick}
                 title={label}
-                className="w-full flex items-center justify-center py-2.5 rounded-lg hover:bg-white/5 transition-colors group relative"
+                className="w-full flex items-center justify-center py-2.5 rounded-lg transition-all group relative cursor-pointer"
+                style={{
+                  background: isActive ? "rgba(6,182,212,0.18)" : "transparent",
+                  borderLeft: isActive ? "2px solid #06b6d4" : "2px solid transparent",
+                }}
               >
-                <Icon size={15} style={{ color: "#3a4f6a" }} />
+                <Icon
+                  size={17}
+                  className="transition-all group-hover:scale-110"
+                  style={{ color: isActive ? "#22d3ee" : "#4a6080" }}
+                />
+                {/* Active pulse */}
+                {isActive && (
+                  <span className="absolute right-1.5 w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                )}
+                {/* Tactical Tooltip */}
                 <div
-                  className="absolute left-full ml-2 px-2 py-1 rounded text-[10px] font-mono whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50"
-                  style={{ background: "#0c1322", border: "1px solid #1a2640", color: "#f0f4ff" }}
+                  className="absolute left-full ml-2 px-2.5 py-1.5 rounded-md text-[10px] font-mono whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl flex flex-col gap-0.5 border"
+                  style={{
+                    background: "#0c1322",
+                    borderColor: "#1a2640",
+                    color: "#f0f4ff",
+                  }}
                 >
-                  {label}
+                  <span className="font-bold text-cyan-300">{label}</span>
+                  <span className="text-[9px] text-slate-400">{sublabel}</span>
                 </div>
               </button>
             ))}
@@ -893,6 +934,30 @@ function OperatorDashboardContent() {
           </div>
         </div>
       </div>
+
+      {/* TACTICAL OPERATIONAL SETTINGS MODAL */}
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        isMeshSimulated={isMeshSimulated}
+        onToggleMesh={toggleMeshSimulation}
+      />
+
+      {/* OFFICER DOSSIER & CLEARANCE PROFILE MODAL */}
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        activeCity={activeCity}
+        onSwitchView={(v) => {
+          if (v === "field") {
+            navigate("/rescue");
+          } else if (v === "citizen") {
+            navigate("/citizen");
+          } else {
+            setActiveView(v);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -963,7 +1028,9 @@ export default function App() {
       <AuthProvider>
         <CityProvider>
           <DispatchProvider>
-            <AppRoutes />
+            <SettingsProvider>
+              <AppRoutes />
+            </SettingsProvider>
           </DispatchProvider>
         </CityProvider>
       </AuthProvider>
