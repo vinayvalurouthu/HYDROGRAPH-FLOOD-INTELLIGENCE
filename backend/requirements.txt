@@ -6,3 +6,12 @@ pydantic-settings==2.5.0
 python-dotenv==1.0.1
 httpx==0.27.0
 aiosqlite==0.20.0
+psycopg2-binary==2.9.9
+geoalchemy2==0.15.2
+imdlib
+pyscancf
+pysteps
+pyjwt==2.13.0
+python-multipart==0.0.32
+
+

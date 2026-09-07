@@ -117,7 +117,8 @@ async def get_sos_detail(incident_id: str, db: AsyncSession = Depends(get_db)):
     return sos_to_out(incident)
 
 
-@router.post("/sos", response_model=SOSIncidentOut)
+@router.post("/sos", response_model=SOSIncidentOut, status_code=201)
+@router.post("/sos/", response_model=SOSIncidentOut, status_code=201)
 async def create_sos_alert(body: SOSCreateRequest, db: AsyncSession = Depends(get_db)):
     """
     Citizen/Field intake: Submit a new SOS distress signal.

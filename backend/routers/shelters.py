@@ -45,6 +45,7 @@ def shelter_to_out(s: Shelter) -> ShelterOut:
 
 
 @router.get("", response_model=list[ShelterOut])
+@router.get("/", response_model=list[ShelterOut])
 async def get_all_shelters(db: AsyncSession = Depends(get_db)):
     """Fetch all registered flood relief shelters and capacity statuses."""
     result = await db.execute(select(Shelter).order_by(Shelter.distance_km.asc()))

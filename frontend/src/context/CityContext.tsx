@@ -62,3 +62,6 @@ export const useCityContext = () => {
   }
   return context;
 };
+
+export const useCity = useCityContext;
+
