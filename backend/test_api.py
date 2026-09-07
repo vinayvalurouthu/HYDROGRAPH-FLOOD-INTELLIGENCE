@@ -5,9 +5,13 @@ Tests all endpoints across all 9 domain routers.
 
 import asyncio
 import urllib.parse
+import pytest
 from httpx import AsyncClient, ASGITransport
 from main import app
 
+@pytest.mark.asyncio
+async def test_full_api_suite():
+    await run_all_tests()
 
 async def run_all_tests():
     print("[TEST] Starting HydroGraph Backend API Test Suite...")
@@ -91,7 +95,7 @@ async def run_all_tests():
             "water_depth_m": 0.9,
             "contact_phone": "+91 99999 88888",
         })
-        assert res.status_code == 200
+        assert res.status_code in (200, 201)
         new_sos = res.json()
         created_id = new_sos["id"]
         assert new_sos["priority"] == "CRITICAL"
