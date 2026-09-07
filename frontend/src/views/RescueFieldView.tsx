@@ -38,7 +38,7 @@ import { useDispatch } from "../context/DispatchContext";
 import { useCity } from "../context/CityContext";
 import { playSynthesizedChime } from "../context/SettingsContext";
 
-// Predefined Active Mission Targets for dynamic incident switching
+// Predefined Active Mission Targets for dynamic incident switching with designated Safe Shelters
 const ACTIVE_MISSION_TARGETS = [
   {
     id: "#10366",
@@ -56,7 +56,17 @@ const ACTIVE_MISSION_TARGETS = [
     medicalSub: "AMBULANCE READY",
     initialDistanceKm: 1.4,
     bearing: "042° NE",
+    shelterBearing: "152° SE",
     safeWaypoints: 4,
+    shelter: {
+      id: "SHELTER-RA-01",
+      name: "Rajam Relief Shelter Alpha",
+      elevation: "+28m Elevated Grounds",
+      location: "Polytechnic Campus High Grounds",
+      capacity: "142 / 300 Beds",
+      distanceFromVictimKm: 1.1,
+      status: "TRIAGE INTAKE READY"
+    },
     hazard1: { label: "SEVERE FLOOD INUNDATION", sub: "DEPTH 2.4m", speed: "1.8 m/s" },
     hazard2: { label: "HIGH CURRENT ZONE", sub: "2.8 m/s", speed: "2.8 m/s" }
   },
@@ -76,7 +86,17 @@ const ACTIVE_MISSION_TARGETS = [
     medicalSub: "OXYGEN REQUIRED",
     initialDistanceKm: 2.1,
     bearing: "058° ENE",
+    shelterBearing: "165° SSE",
     safeWaypoints: 6,
+    shelter: {
+      id: "SHELTER-RA-02",
+      name: "North Embankment Stadium Hub",
+      elevation: "+32m Hillcrest",
+      location: "Municipal Sports Complex",
+      capacity: "210 / 500 Beds",
+      distanceFromVictimKm: 1.4,
+      status: "PARAMEDICS ON STANDBY"
+    },
     hazard1: { label: "TURBULENT DRAIN COLLAPSE", sub: "DEPTH 3.1m", speed: "3.2 m/s" },
     hazard2: { label: "HIGH DEBRIS ACCUMULATION", sub: "OBSTRUCTED", speed: "1.2 m/s" }
   },
@@ -96,7 +116,17 @@ const ACTIVE_MISSION_TARGETS = [
     medicalSub: "TRIAGE ON ARRIVAL",
     initialDistanceKm: 1.1,
     bearing: "215° SW",
+    shelterBearing: "110° ESE",
     safeWaypoints: 3,
+    shelter: {
+      id: "SHELTER-RA-03",
+      name: "South Sluice Relief Camp",
+      elevation: "+22m Bund Ridge",
+      location: "Irrigation Inspection Bungalow",
+      capacity: "95 / 200 Beds",
+      distanceFromVictimKm: 0.8,
+      status: "AMBULANCE & MOBILE ICU"
+    },
     hazard1: { label: "CANAL SLUICE BACKFLOW", sub: "DEPTH 2.0m", speed: "2.1 m/s" },
     hazard2: { label: "SUBMERGED POWER LINES", sub: "HAZARD HIGH", speed: "0.5 m/s" }
   }
@@ -106,7 +136,8 @@ const ACTIVE_MISSION_TARGETS = [
 const INITIAL_RADIO_FEED = [
   { id: 1, sender: "MUNICIPAL DISPATCH", text: "Unit Taskforce R-07, vector coordinates locked. Proceed via Canal bypass.", time: "10:46:12", type: "base" },
   { id: 2, sender: "BOAT TASKFORCE R-07", text: "Vector route acknowledged. Doppler radar shows 2.4m depth to port side.", time: "10:46:28", type: "team" },
-  { id: 3, sender: "MUNICIPAL DISPATCH", text: "Keep 45m safe clearance from Canal bridge footing. High current zone ahead.", time: "10:46:44", type: "base" }
+  { id: 3, sender: "MUNICIPAL DISPATCH", text: "Keep 45m safe clearance from Canal bridge footing. High current zone ahead.", time: "10:46:44", type: "base" },
+  { id: 4, sender: "SHELTER ALPHA HUB", text: "Landing ramp 2 illuminated at high-ground shelter. Triage medical team standing by.", time: "10:47:05", type: "base" }
 ];
 
 export default function RescueFieldView() {
@@ -133,14 +164,16 @@ export default function RescueFieldView() {
       etaMin: 6
     };
 
-  // ─── LIVE DYNAMIC STATE & SIMULATION ───────────────────────────────────────
-  // Current Lifecycle Step Index: 0 = ASSIGNED, 1 = EN_ROUTE, 2 = ON_SCENE, 3 = RESCUED, 4 = CLOSED
+  // ─── LIVE DYNAMIC TWO-PHASE RESCUE & EVACUATION STATE ──────────────────────
+  // Step 0: ASSIGNED, 1: EN_ROUTE, 2: ON_SCENE, 3: RESCUED (VICTIMS ABOARD), 4: CLOSED (LANDED AT SHELTER)
   const [activeStepIdx, setActiveStepIdx] = useState<number>(2); // Starts on ON_SCENE matching original UI
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [simSpeed, setSimSpeed] = useState<number>(1); // 1x, 2x, 4x
 
-  // Normalized boat progress along path: 0.0 (dock) to 1.0 (victim location)
-  const [boatProgress, setBoatProgress] = useState<number>(0.65); // 65% en route towards victim
+  // Normalized continuous mission progress:
+  // 0.0 to 1.0 = Leg 1: Base Dock -> Victim Rooftop
+  // 1.0 to 2.0 = Leg 2: Victim Rooftop -> Safe Landing Shelter Alpha
+  const [missionProgress, setMissionProgress] = useState<number>(0.92); // Starts near victim
 
   // Live telemetry metrics with natural micro-fluctuations
   const [boatSpeedKnots, setBoatSpeedKnots] = useState<number>(14.8);
@@ -160,15 +193,15 @@ export default function RescueFieldView() {
   const [isRecalculating, setIsRecalculating] = useState<boolean>(false);
   const [corridorMargin, setCorridorMargin] = useState<number>(45);
 
-  // Radar Ping Wave pulses
-  const [radarPulseKey, setRadarPulseKey] = useState<number>(0);
-
   // Sound trigger helper
   const triggerChime = useCallback((freq = 880, dur = 0.2) => {
     if (soundEnabled) {
       playSynthesizedChime(freq, dur);
     }
   }, [soundEnabled]);
+
+  // Active Mission Leg: "INBOUND_RESCUE" (Base -> Victim) or "EVACUATION_LANDING" (Victim -> Shelter)
+  const isEvacuationLeg = missionProgress >= 1.0 || activeStepIdx >= 3;
 
   // Stopwatch timer & micro-telemetry fluctuations loop
   useEffect(() => {
@@ -180,42 +213,44 @@ export default function RescueFieldView() {
       setBatteryPct((b) => +(b + (Math.random() > 0.6 ? 0.05 : -0.05)).toFixed(1));
 
       // Realistic minor fuel consumption while moving
-      if (activeStepIdx === 1 || isSimulating) {
+      if (activeStepIdx === 1 || activeStepIdx === 4 || isSimulating) {
         setFuelPct((f) => +(Math.max(12, f - 0.02 * simSpeed)).toFixed(1));
       }
     }, 1000);
     return () => clearInterval(timer);
   }, [activeStepIdx, isSimulating, simSpeed]);
 
-  // Autonomous Mission Simulation Engine Loop
+  // Autonomous Two-Phase Mission Simulation Engine Loop
   useEffect(() => {
     if (!isSimulating) return;
 
-    const intervalTime = 120 / simSpeed; // Updates every 120ms / simSpeed
+    const intervalTime = 110 / simSpeed;
     const simTimer = setInterval(() => {
-      setBoatProgress((prev) => {
-        let next = prev + 0.015 * simSpeed;
+      setMissionProgress((prev) => {
+        let next = prev + 0.016 * simSpeed;
 
-        // Auto-advance lifecycle steps based on boat progress
+        // PHASE 1: TRANSIT TO VICTIM (0.0 -> 1.0)
         if (next >= 0.15 && activeStepIdx < 1) {
           setActiveStepIdx(1);
+          setBoatSpeedKnots(16.8);
           triggerChime(640, 0.15);
-        } else if (next >= 0.72 && activeStepIdx < 2) {
+        } else if (next >= 0.85 && next < 1.0 && activeStepIdx < 2) {
           setActiveStepIdx(2);
-          setBoatSpeedKnots(4.2);
+          setBoatSpeedKnots(4.5);
           triggerChime(880, 0.25);
-          // Add arrival chatter
           setRadioFeed((rf) => [
             ...rf,
             {
               id: Date.now(),
               sender: "BOAT TASKFORCE R-07",
-              text: `On scene at ${targetIncident.landmark}. Searchlights locked on target victims.`,
+              text: `On scene at ${targetIncident.landmark}. Searchlights locked on target victims atop roof.`,
               time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
               type: "team"
             }
           ]);
-        } else if (next >= 0.92 && activeStepIdx < 3) {
+        }
+        // TRANSITION TO PHASE 2: RESCUE & EMBARKATION (1.0)
+        else if (next >= 1.0 && next < 1.15 && activeStepIdx < 3) {
           setActiveStepIdx(3);
           setPassengersAboard(targetIncident.people);
           triggerChime(1050, 0.3);
@@ -224,26 +259,42 @@ export default function RescueFieldView() {
             {
               id: Date.now(),
               sender: "BOAT TASKFORCE R-07",
-              text: `All ${targetIncident.people} victims secured aboard with lifejackets. Preparing return transit.`,
+              text: `All ${targetIncident.people} victims secured aboard with lifejackets. Turning toward ${targetIncident.shelter.name} for safe landing.`,
               time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
               type: "team"
             }
           ]);
-        } else if (next >= 1.0) {
+        }
+        // PHASE 2: EVACUATION TRANSIT TO SAFE SHELTER (1.15 -> 2.0)
+        else if (next >= 1.25 && next < 1.85 && activeStepIdx < 4) {
+          setActiveStepIdx(4);
+          setBoatSpeedKnots(15.2);
+          triggerChime(820, 0.2);
+        }
+        // SAFE LANDING AT SHELTER (2.0)
+        else if (next >= 2.0) {
           setActiveStepIdx(4);
           setIsSimulating(false);
-          triggerChime(1200, 0.4);
+          setBoatSpeedKnots(0.0);
+          triggerChime(1320, 0.5);
           setRadioFeed((rf) => [
             ...rf,
             {
               id: Date.now(),
+              sender: "BOAT TASKFORCE R-07",
+              text: `SAFE TOUCHDOWN at ${targetIncident.shelter.name} ramp! All ${targetIncident.people} civilians landed on elevated ground. Medical intake handoff complete.`,
+              time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+              type: "team"
+            },
+            {
+              id: Date.now() + 1,
               sender: "MUNICIPAL DISPATCH",
-              text: `Mission #${targetIncident.id} Complete. Medical triage team standing by at Rajam Relief Shelter.`,
+              text: `Mission #${targetIncident.id} successfully completed. Zero casualties. Team R-07 standing down.`,
               time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
               type: "base"
             }
           ]);
-          return 1.0;
+          return 2.0;
         }
 
         return next;
@@ -253,52 +304,110 @@ export default function RescueFieldView() {
     return () => clearInterval(simTimer);
   }, [isSimulating, activeStepIdx, simSpeed, targetIncident, triggerChime]);
 
-  // Compute Bezier Curve Position for the Boat:
-  // Route curve: M 60 220 Q 180 180 280 130 T 520 80
+  // Compute Coordinates & Heading for the Boat across both legs:
+  // Leg 1 Curve: Base Dock (55, 220) -> Control (180, 130) -> Victim (435, 75)
+  // Leg 2 Curve: Victim (435, 75) -> Control (360, 165) -> Safe Shelter Alpha (530, 220)
   const boatCoords = useMemo(() => {
-    const t = Math.max(0, Math.min(1, boatProgress));
-    // Sample coordinates along the curved trajectory
-    // P0 = (60, 220), P1 = (180, 180), P2 = (280, 130), P3 = (520, 80)
-    const x = Math.round(60 + t * (520 - 60) + Math.sin(t * Math.PI) * -35);
-    const y = Math.round(220 - t * (220 - 80) + Math.cos(t * Math.PI * 0.8) * 15);
+    if (missionProgress <= 1.0) {
+      // Leg 1: Base Dock to Victim
+      const u = Math.max(0, Math.min(1, missionProgress));
+      const p0 = { x: 55, y: 220 };
+      const p1 = { x: 180, y: 130 };
+      const p2 = { x: 435, y: 75 };
 
-    // Compute tangent angle for heading
-    const dt = 0.02;
-    const tNext = Math.min(1, t + dt);
-    const nextX = 60 + tNext * (520 - 60) + Math.sin(tNext * Math.PI) * -35;
-    const nextY = 220 - tNext * (220 - 80) + Math.cos(tNext * Math.PI * 0.8) * 15;
-    const angleRad = Math.atan2(nextY - y, nextX - x);
-    const angleDeg = Math.round((angleRad * 180) / Math.PI);
+      const x = Math.round((1 - u) * (1 - u) * p0.x + 2 * (1 - u) * u * p1.x + u * u * p2.x);
+      const y = Math.round((1 - u) * (1 - u) * p0.y + 2 * (1 - u) * u * p1.y + u * u * p2.y);
 
-    return { x, y, angleDeg };
-  }, [boatProgress]);
+      // Tangent for heading angle
+      const du = 0.02;
+      const uNext = Math.min(1, u + du);
+      const nextX = (1 - uNext) * (1 - uNext) * p0.x + 2 * (1 - uNext) * uNext * p1.x + uNext * uNext * p2.x;
+      const nextY = (1 - uNext) * (1 - uNext) * p0.y + 2 * (1 - uNext) * uNext * p1.y + uNext * uNext * p2.y;
+      const angleRad = Math.atan2(nextY - y, nextX - x);
+      const angleDeg = Math.round((angleRad * 180) / Math.PI);
 
-  // Live computed distance to victim & ETA
-  const liveDistanceKm = useMemo(() => {
-    const d = targetIncident.initialDistanceKm * (1 - boatProgress);
-    return Math.max(0, +d.toFixed(2));
-  }, [targetIncident.initialDistanceKm, boatProgress]);
+      return { x, y, angleDeg, leg: "LEG_1" as const };
+    } else {
+      // Leg 2: Victim to Safe Landing Shelter
+      const v = Math.max(0, Math.min(1, missionProgress - 1.0));
+      const p0 = { x: 435, y: 75 };
+      const p1 = { x: 360, y: 165 };
+      const p2 = { x: 530, y: 220 };
 
-  const liveEtaMin = useMemo(() => {
-    return Math.max(0, Math.ceil(6 * (1 - boatProgress)));
-  }, [boatProgress]);
+      const x = Math.round((1 - v) * (1 - v) * p0.x + 2 * (1 - v) * v * p1.x + v * v * p2.x);
+      const y = Math.round((1 - v) * (1 - v) * p0.y + 2 * (1 - v) * v * p1.y + v * v * p2.y);
+
+      // Tangent for heading angle
+      const dv = 0.02;
+      const vNext = Math.min(1, v + dv);
+      const nextX = (1 - vNext) * (1 - vNext) * p0.x + 2 * (1 - vNext) * vNext * p1.x + vNext * vNext * p2.x;
+      const nextY = (1 - vNext) * (1 - vNext) * p0.y + 2 * (1 - vNext) * vNext * p1.x + vNext * vNext * p2.x;
+      const angleRad = Math.atan2(nextY - y, nextX - x);
+      const angleDeg = Math.round((angleRad * 180) / Math.PI);
+
+      return { x, y, angleDeg, leg: "LEG_2" as const };
+    }
+  }, [missionProgress]);
+
+  // Live computed target name & distance countdown
+  const activeTargetInfo = useMemo(() => {
+    if (missionProgress <= 1.0) {
+      const u = Math.max(0, Math.min(1, missionProgress));
+      const d = targetIncident.initialDistanceKm * (1 - u);
+      const eta = Math.max(0, Math.ceil(6 * (1 - u)));
+      return {
+        targetName: `VICTIM TICKET ${targetIncident.id}`,
+        destination: targetIncident.landmark,
+        coords: `${targetIncident.lat.toFixed(4)}°N, ${targetIncident.lng.toFixed(4)}°E`,
+        distanceKm: Math.max(0, +d.toFixed(2)),
+        etaMin: eta,
+        bearing: targetIncident.bearing,
+        legTitle: "INBOUND RESCUE: DOCK → VICTIM",
+        isShelter: false
+      };
+    } else {
+      const v = Math.max(0, Math.min(1, missionProgress - 1.0));
+      const d = targetIncident.shelter.distanceFromVictimKm * (1 - v);
+      const eta = Math.max(0, Math.ceil(4 * (1 - v)));
+      return {
+        targetName: `SAFE LANDING HUB: ${targetIncident.shelter.name}`,
+        destination: targetIncident.shelter.location,
+        coords: `${targetIncident.shelter.elevation} • INTAKE READY`,
+        distanceKm: Math.max(0, +d.toFixed(2)),
+        etaMin: eta,
+        bearing: targetIncident.shelterBearing,
+        legTitle: "SAFE EVACUATION: VICTIM → RELIEF SHELTER ALPHA",
+        isShelter: true
+      };
+    }
+  }, [missionProgress, targetIncident]);
 
   const waypointsPassed = useMemo(() => {
-    return Math.min(targetIncident.safeWaypoints, Math.floor(boatProgress * (targetIncident.safeWaypoints + 1)));
-  }, [targetIncident.safeWaypoints, boatProgress]);
+    if (missionProgress <= 1.0) {
+      return Math.min(targetIncident.safeWaypoints, Math.floor(missionProgress * (targetIncident.safeWaypoints + 1)));
+    } else {
+      const leg2WP = Math.floor((missionProgress - 1.0) * 3);
+      return targetIncident.safeWaypoints + leg2WP;
+    }
+  }, [targetIncident.safeWaypoints, missionProgress]);
 
   // Stepper Step Transition Handler
   const handleStepSelect = (idx: number, statusKey: any) => {
     setActiveStepIdx(idx);
     triggerChime(750 + idx * 80, 0.2);
 
-    // Set boat progress matching the step
-    const progressMap = [0.05, 0.45, 0.72, 0.92, 1.0];
-    setBoatProgress(progressMap[idx]);
+    // Map each step to realistic continuous mission progress
+    // Step 0 = ASSIGNED (0.05)
+    // Step 1 = EN_ROUTE (0.55)
+    // Step 2 = ON_SCENE (0.98 - at victim)
+    // Step 3 = RESCUED (1.05 - embarking victims)
+    // Step 4 = CLOSED (2.0 - docked at Safe Shelter)
+    const progressMap = [0.05, 0.55, 0.98, 1.05, 2.0];
+    setMissionProgress(progressMap[idx]);
 
-    if (idx === 3) {
+    if (idx >= 3) {
       setPassengersAboard(targetIncident.people);
-    } else if (idx < 3) {
+    } else {
       setPassengersAboard(0);
     }
 
@@ -306,6 +415,8 @@ export default function RescueFieldView() {
       setBoatSpeedKnots(16.5);
     } else if (idx === 2) {
       setBoatSpeedKnots(3.8);
+    } else if (idx === 3) {
+      setBoatSpeedKnots(2.5);
     } else if (idx === 4) {
       setBoatSpeedKnots(0.0);
     }
@@ -363,7 +474,7 @@ export default function RescueFieldView() {
     { status: "EN_ROUTE", label: "EN ROUTE TO VICTIM", color: "border-amber-500 text-amber-300 bg-amber-950/40" },
     { status: "ON_SCENE", label: "ON SCENE AT LANDMARK", color: "border-purple-500 text-purple-300 bg-purple-950/40" },
     { status: "RESCUED", label: "VICTIMS RESCUED & ABOARD", color: "border-emerald-500 text-emerald-300 bg-emerald-950/40" },
-    { status: "CLOSED", label: "EN ROUTE TO SHELTER (COMPLETE)", color: "border-blue-500 text-blue-300 bg-blue-950/40" }
+    { status: "CLOSED", label: "LAND AT SAFE SHELTER (COMPLETE)", color: "border-blue-500 text-blue-300 bg-blue-950/40" }
   ];
 
   return (
@@ -394,7 +505,7 @@ export default function RescueFieldView() {
                     value={activeTargetIdx}
                     onChange={(e) => {
                       setActiveTargetIdx(Number(e.target.value));
-                      setBoatProgress(0.1);
+                      setMissionProgress(0.1);
                       setActiveStepIdx(1);
                       triggerChime(880, 0.2);
                     }}
@@ -420,11 +531,16 @@ export default function RescueFieldView() {
                 </span>
               </div>
 
-              {/* Location Name & Landmark */}
-              <h2 className="text-xl font-black text-cyan-300 mt-1 capitalize tracking-wide flex items-center gap-2">
+              {/* Location Name & Designated Safe Shelter Landing Goal */}
+              <h2 className="text-xl font-black text-cyan-300 mt-1 capitalize tracking-wide flex flex-wrap items-center gap-2">
                 <span>{targetIncident.location}</span>
                 <span className="text-xs font-normal text-slate-400 lowercase">
-                  ({selectedCity?.name || "Patna"} Operational Sector)
+                  ({selectedCity?.name || "Patna"} Sector)
+                </span>
+                <span className="text-xs text-slate-500">→</span>
+                <span className="text-xs font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded flex items-center gap-1">
+                  <CheckCircle size={11} className="text-emerald-400" />
+                  <span>SAFE LANDING: {targetIncident.shelter.name}</span>
                 </span>
               </h2>
 
@@ -435,8 +551,13 @@ export default function RescueFieldView() {
                 </span>
                 <span>&bull;</span>
                 <span className="text-amber-300 font-bold flex items-center gap-1">
-                  <span>LANDMARK:</span>
+                  <span>VICTIM LANDMARK:</span>
                   <span className="text-white">{targetIncident.landmark}</span>
+                </span>
+                <span>&bull;</span>
+                <span className="text-emerald-300 font-bold flex items-center gap-1">
+                  <span>HIGH GROUND:</span>
+                  <span className="text-emerald-200">{targetIncident.shelter.elevation}</span>
                 </span>
               </div>
             </div>
@@ -472,7 +593,7 @@ export default function RescueFieldView() {
                   {targetIncident.medicalStatus}
                 </div>
                 <div className="text-[8px] text-slate-400 font-bold">
-                  {targetIncident.medicalSub}
+                  {missionProgress >= 1.9 ? "TRIAGE INTAKE DONE" : targetIncident.medicalSub}
                 </div>
               </div>
             </div>
@@ -534,7 +655,6 @@ export default function RescueFieldView() {
                 <div className="text-sm font-bold text-cyan-300 mt-1 truncate">
                   {radioChannel}
                 </div>
-                {/* Live animated waveform visualizer */}
                 <div className="flex items-end gap-1 h-3 mt-1.5 opacity-70">
                   <span className="w-1 bg-cyan-400 rounded-full animate-pulse h-2" />
                   <span className="w-1 bg-cyan-400 rounded-full animate-bounce h-3" />
@@ -547,16 +667,23 @@ export default function RescueFieldView() {
 
               {/* Payload Capacity with live passenger aboard tracking */}
               <div className="bg-[#1c2541] p-3 rounded-lg border border-slate-700/60">
-                <div className="text-[9px] text-slate-400 font-bold uppercase flex items-center gap-1">
-                  <Users className="w-3 h-3 text-emerald-400" /> PAYLOAD CAPACITY
+                <div className="text-[9px] text-slate-400 font-bold uppercase flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3 h-3 text-emerald-400" /> PAYLOAD CAPACITY
+                  </span>
+                  {passengersAboard > 0 && (
+                    <span className="text-[8px] text-emerald-300 font-bold bg-emerald-950 px-1 py-0.2 rounded border border-emerald-500/40">
+                      SECURED ABOARD
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm font-bold text-emerald-300 mt-1">
-                  {passengersAboard > 0 ? passengersAboard : targetIncident.people} / {currentTeam.capacity || 6} PASSENGERS
+                  {passengersAboard > 0 ? passengersAboard : (missionProgress >= 1.0 ? targetIncident.people : 0)} / {currentTeam.capacity || 6} PASSENGERS
                 </div>
                 <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2 overflow-hidden">
                   <div
                     className="bg-emerald-400 h-full rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, ((passengersAboard || targetIncident.people) / (currentTeam.capacity || 6)) * 100)}%` }}
+                    style={{ width: `${Math.min(100, (((passengersAboard || (missionProgress >= 1.0 ? targetIncident.people : 0))) / (currentTeam.capacity || 6)) * 100)}%` }}
                   />
                 </div>
               </div>
@@ -599,17 +726,20 @@ export default function RescueFieldView() {
             </div>
           </div>
 
-          {/* ─── 3. A* FLOOD-AVOIDANCE VECTOR NAVIGATION MAP ─── */}
+          {/* ─── 3. A* FLOOD-AVOIDANCE VECTOR NAVIGATION MAP (TWO-PHASE: RESCUE & SAFE LANDING) ─── */}
           <div className="bg-[#0b132b] border border-cyan-500/30 rounded-xl p-4 md:p-5 space-y-3 shadow-xl">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Navigation className="w-5 h-5 text-cyan-400 animate-spin-slow" />
-                <h3 className="text-xs font-bold text-cyan-300 uppercase tracking-wider">
-                  A* FLOOD-AVOIDANCE VECTOR NAVIGATION MAP
+                <h3 className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                  <span>A* VECTOR CORRIDOR:</span>
+                  <span className={missionProgress > 1.0 ? "text-emerald-400" : "text-cyan-400"}>
+                    {activeTargetInfo.legTitle}
+                  </span>
                 </h3>
               </div>
 
-              {/* Recalculate Corridor & Autonomous Navigation Controls */}
+              {/* Safe Corridor Controls & Leg Switcher */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleRecalculateCorridor}
@@ -623,7 +753,7 @@ export default function RescueFieldView() {
 
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-1 rounded font-mono font-bold flex items-center gap-1">
                   <CheckCircle size={11} className="text-emerald-400" />
-                  SAFE WATER ROUTE COMPUTED
+                  <span>{missionProgress > 1.0 ? "SAFE LANDING CORRIDOR ACTIVE" : "SAFE WATER ROUTE COMPUTED"}</span>
                 </span>
               </div>
             </div>
@@ -644,7 +774,7 @@ export default function RescueFieldView() {
                 <div className="w-full h-full bg-gradient-to-r from-transparent via-cyan-500/10 to-transparent animate-radar-sweep" />
               </div>
 
-              {/* Hydrodynamic Water Velocity Arrow Particles flowing in background */}
+              {/* Hydrodynamic Water Velocity Arrow Particles */}
               <div className="absolute inset-0 pointer-events-none opacity-20">
                 <svg className="w-full h-full">
                   <defs>
@@ -668,8 +798,8 @@ export default function RescueFieldView() {
                 </div>
               </div>
 
-              {/* HAZARD ZONE 2: High Current Zone Polygon (Bottom-Right) */}
-              <div className="absolute bottom-6 right-14 w-44 h-32 bg-red-600/15 border-2 border-dashed border-red-500/60 rounded-2xl flex flex-col items-center justify-center p-2 text-center -rotate-12 shadow-[0_0_25px_rgba(239,68,68,0.15)] group hover:border-red-400 transition-all cursor-pointer">
+              {/* HAZARD ZONE 2: High Current Zone Polygon (Center-Right) */}
+              <div className="absolute bottom-10 left-64 w-44 h-32 bg-red-600/15 border-2 border-dashed border-red-500/60 rounded-2xl flex flex-col items-center justify-center p-2 text-center -rotate-6 shadow-[0_0_25px_rgba(239,68,68,0.15)] group hover:border-red-400 transition-all cursor-pointer">
                 <div className="flex items-center gap-1 text-[10px] text-red-400 font-extrabold tracking-wide">
                   <Waves size={12} className="animate-pulse" />
                   <span>{targetIncident.hazard2.label}</span>
@@ -680,43 +810,62 @@ export default function RescueFieldView() {
                 </div>
               </div>
 
-              {/* Safe A* Vector Path (Curving around both hazard zones) */}
+              {/* DUAL A* VECTOR PATHS (SVG CANVAS) */}
               <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 600 280" preserveAspectRatio="none">
-                {/* Glow underlay */}
+                {/* ─── LEG 1: Inbound Rescue Path (Base 55,220 -> Victim 435,75) ─── */}
                 <path
-                  d="M 60 220 Q 180 180 280 130 T 520 80"
+                  d="M 55 220 Q 180 130 435 75"
                   fill="none"
                   stroke="#00f2fe"
                   strokeWidth="8"
-                  opacity="0.2"
+                  opacity={missionProgress <= 1.0 ? "0.2" : "0.08"}
                 />
-
-                {/* Main animated dash path */}
                 <path
-                  d="M 60 220 Q 180 180 280 130 T 520 80"
+                  d="M 55 220 Q 180 130 435 75"
                   fill="none"
                   stroke="#22d3ee"
                   strokeWidth="3.5"
                   strokeDasharray="8 5"
-                  className="animate-pulse"
+                  className={missionProgress <= 1.0 ? "animate-pulse" : ""}
+                  opacity={missionProgress <= 1.0 ? "1" : "0.35"}
                 />
 
-                {/* Safe Navigation Waypoints Nodes along vector */}
+                {/* ─── LEG 2: Safe Evacuation Landing Path (Victim 435,75 -> Shelter Alpha 530,220) ─── */}
+                <path
+                  d="M 435 75 Q 360 165 530 220"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="9"
+                  opacity={missionProgress > 1.0 ? "0.28" : "0.12"}
+                />
+                <path
+                  d="M 435 75 Q 360 165 530 220"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="4"
+                  strokeDasharray="8 5"
+                  className={missionProgress > 1.0 ? "animate-pulse" : ""}
+                  opacity={missionProgress > 1.0 ? "1" : "0.55"}
+                />
+
+                {/* Safe Waypoints Nodes along vector paths */}
                 {[
-                  { cx: 60, cy: 220, label: "BASE" },
-                  { cx: 175, cy: 180, label: "WP-1" },
-                  { cx: 280, cy: 130, label: "WP-2" },
-                  { cx: 395, cy: 98, label: "WP-3" },
-                  { cx: 520, cy: 80, label: "TARGET" }
+                  { cx: 55, cy: 220, label: "BASE" },
+                  { cx: 160, cy: 165, label: "WP-1" },
+                  { cx: 285, cy: 120, label: "WP-2" },
+                  { cx: 435, cy: 75, label: "VICTIM" },
+                  { cx: 385, cy: 145, label: "EVAC-1" },
+                  { cx: 445, cy: 190, label: "EVAC-2" },
+                  { cx: 530, cy: 220, label: "SHELTER" }
                 ].map((pt, i) => (
                   <g key={pt.label}>
-                    <circle cx={pt.cx} cy={pt.cy} r="4" fill="#0b132b" stroke="#00f2fe" strokeWidth="2" />
+                    <circle cx={pt.cx} cy={pt.cy} r="4" fill="#0b132b" stroke={i >= 3 ? "#10b981" : "#00f2fe"} strokeWidth="2" />
                     <circle
                       cx={pt.cx}
                       cy={pt.cy}
                       r="7"
                       fill="none"
-                      stroke={boatProgress * 5 >= i ? "#10b981" : "#38bdf8"}
+                      stroke={waypointsPassed >= i ? "#10b981" : "#38bdf8"}
                       strokeWidth="1"
                       opacity="0.6"
                     />
@@ -726,7 +875,7 @@ export default function RescueFieldView() {
 
               {/* ─── LIVE ANIMATED BOAT POSITION MARKER ─── */}
               <div
-                className="absolute transition-all duration-300 z-20 pointer-events-auto cursor-grab group"
+                className="absolute transition-all duration-300 z-30 pointer-events-auto cursor-grab group"
                 style={{
                   left: `${(boatCoords.x / 600) * 100}%`,
                   top: `${(boatCoords.y / 280) * 100}%`,
@@ -734,40 +883,56 @@ export default function RescueFieldView() {
                 }}
               >
                 {/* Water wake ripples trailing boat */}
-                <span className="absolute -inset-2 rounded-full bg-cyan-400/30 animate-ping" />
-                <span className="absolute -inset-4 rounded-full border border-cyan-400/40 animate-pulse" />
+                <span className={`absolute -inset-2 rounded-full animate-ping ${missionProgress > 1.0 ? "bg-emerald-400/30" : "bg-cyan-400/30"}`} />
+                <span className={`absolute -inset-4 rounded-full border animate-pulse ${missionProgress > 1.0 ? "border-emerald-400/40" : "border-cyan-400/40"}`} />
 
                 {/* Boat Tactical Capsule */}
-                <div className="flex items-center gap-2 bg-cyan-950/95 border-2 border-cyan-400 px-3 py-1.5 rounded-lg shadow-[0_0_25px_rgba(6,182,212,0.8)] backdrop-blur-md">
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md border-2 shadow-2xl ${
+                  missionProgress >= 1.95
+                    ? "bg-emerald-950/95 border-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.9)]"
+                    : missionProgress > 1.0
+                      ? "bg-teal-950/95 border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.7)]"
+                      : "bg-cyan-950/95 border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.8)]"
+                }`}>
                   <div
                     className="transition-transform duration-300"
                     style={{ transform: `rotate(${boatCoords.angleDeg}deg)` }}
                   >
-                    <Compass className="w-4 h-4 text-cyan-300 animate-pulse" />
+                    <Compass className={`w-4 h-4 animate-pulse ${missionProgress > 1.0 ? "text-emerald-300" : "text-cyan-300"}`} />
                   </div>
                   <div>
-                    <div className="text-[9px] text-cyan-100 font-extrabold tracking-wider">
-                      {currentTeam.name ? "BOAT TASKFORCE R-07" : "BOAT TASKFORCE R-07"}
+                    <div className="text-[9px] text-white font-extrabold tracking-wider">
+                      {missionProgress >= 1.95 ? "TOUCHDOWN AT SHELTER" : (missionProgress > 1.0 ? "EVACUATION IN TRANSIT" : "RESCUE INBOUND")}
                     </div>
-                    <div className="text-[8px] text-cyan-300 font-bold flex items-center gap-1.5">
-                      <span>ETA: {liveEtaMin} MINS</span>
+                    <div className="text-[8px] text-cyan-200 font-bold flex items-center gap-1.5">
+                      <span>{activeTargetInfo.etaMin > 0 ? `ETA: ${activeTargetInfo.etaMin}m` : "ARRIVED"}</span>
                       <span>&bull;</span>
                       <span className="text-amber-300">{boatSpeedKnots} KTS</span>
+                      {passengersAboard > 0 && (
+                        <>
+                          <span>&bull;</span>
+                          <span className="text-emerald-300 font-bold">+{passengersAboard} ABOARD</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Searchlight cone shining forward when on scene */}
-                {activeStepIdx >= 2 && (
+                {/* Searchlight cone shining forward */}
+                {activeStepIdx >= 2 && missionProgress < 1.95 && (
                   <div
-                    className="absolute left-full top-1/2 -translate-y-1/2 w-28 h-16 bg-gradient-to-r from-cyan-400/40 via-cyan-300/15 to-transparent rounded-r-full pointer-events-none blur-sm"
+                    className={`absolute left-full top-1/2 -translate-y-1/2 w-28 h-16 rounded-r-full pointer-events-none blur-sm ${
+                      missionProgress > 1.0
+                        ? "bg-gradient-to-r from-emerald-400/40 via-emerald-300/15 to-transparent"
+                        : "bg-gradient-to-r from-cyan-400/40 via-cyan-300/15 to-transparent"
+                    }`}
                     style={{ transformOrigin: "left center", transform: `rotate(${boatCoords.angleDeg}deg)` }}
                   />
                 )}
               </div>
 
-              {/* ─── VICTIM SOS TARGET MARKER (Top-Right) ─── */}
-              <div className="absolute right-14 top-10 flex items-center gap-2 bg-red-950/90 border-2 border-red-500 px-3 py-1.5 rounded-lg shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-bounce z-10 cursor-pointer">
+              {/* ─── VICTIM SOS TARGET MARKER (Top-Center/Right) ─── */}
+              <div className="absolute right-36 top-8 flex items-center gap-2 bg-red-950/90 border-2 border-red-500 px-3 py-1.5 rounded-lg shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-bounce z-10 cursor-pointer">
                 <MapPin className="w-4 h-4 text-red-400" />
                 <div>
                   <div className="text-[9px] text-red-200 font-black">
@@ -779,18 +944,71 @@ export default function RescueFieldView() {
                 </div>
               </div>
 
+              {/* ─── SAFE LANDING SHELTER ALPHA MARKER (Bottom-Right: Elevated Ground) ─── */}
+              <div
+                className={`absolute right-4 bottom-3 flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md border-2 z-10 transition-all cursor-pointer ${
+                  missionProgress >= 1.9
+                    ? "bg-emerald-950 border-emerald-400 shadow-[0_0_35px_rgba(16,185,129,0.9)] ring-2 ring-emerald-300"
+                    : "bg-emerald-950/90 border-emerald-500/70 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                }`}
+                title="Designated Safe High-Ground Landing Shelter"
+              >
+                <div className="p-1 rounded bg-emerald-500/20 text-emerald-300">
+                  <ShieldCheck className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="text-[9px] text-emerald-200 font-black flex items-center gap-1.5">
+                    <span>SAFE LANDING HUB</span>
+                    <span className="text-[7px] bg-emerald-500/30 text-emerald-200 px-1 py-0.2 rounded font-mono">
+                      {targetIncident.shelter.elevation}
+                    </span>
+                  </div>
+                  <div className="text-[8px] text-emerald-300 font-bold">
+                    {targetIncident.shelter.name}
+                  </div>
+                  <div className="text-[7px] text-slate-400">
+                    {targetIncident.shelter.capacity} &bull; {targetIncident.shelter.status}
+                  </div>
+                </div>
+              </div>
+
               {/* Origin Base Dock Station (Bottom-Left) */}
-              <div className="absolute left-6 bottom-5 flex items-center gap-1.5 text-[8px] text-slate-400 bg-slate-900/80 border border-slate-700 px-2 py-1 rounded">
+              <div className="absolute left-4 bottom-4 flex items-center gap-1.5 text-[8px] text-slate-400 bg-slate-900/80 border border-slate-700 px-2 py-1 rounded">
                 <Anchor size={11} className="text-cyan-400" />
                 <span>SECTOR BASE DOCK</span>
               </div>
+
+              {/* Disembarkation Banner upon Safe Landing */}
+              {missionProgress >= 1.95 && (
+                <div className="absolute top-3 inset-x-12 z-40 bg-emerald-950/95 border border-emerald-400/80 rounded-xl p-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.8)] flex items-center justify-between gap-3 animate-slide-down">
+                  <div className="flex items-center gap-2 text-xs">
+                    <CheckCircle className="w-5 h-5 text-emerald-400 animate-pulse" />
+                    <div>
+                      <div className="text-[11px] font-black text-emerald-200">
+                        SAFE LANDING CONFIRMED AT {targetIncident.shelter.name.toUpperCase()}
+                      </div>
+                      <div className="text-[9px] text-slate-300">
+                        All {targetIncident.people} civilians safely landed on elevated ground. Admitted to medical triage.
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[9px] bg-emerald-500 text-black font-black px-2.5 py-1 rounded font-mono">
+                    MISSION ACCOMPLISHED
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* ─── MAP METRICS FOOTER STRIP ─── */}
             <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-800/80 gap-2">
               <div className="flex items-center gap-2">
+                <span className="text-white font-bold">DESTINATION:</span>
+                <span className={missionProgress > 1.0 ? "text-emerald-300 font-black" : "text-cyan-300 font-black"}>
+                  {activeTargetInfo.targetName}
+                </span>
+                <span className="text-slate-600">|</span>
                 <span className="text-white font-bold">DISTANCE:</span>
-                <span className="text-cyan-300 font-black">{liveDistanceKm} KM</span>
+                <span className="text-amber-300 font-black">{activeTargetInfo.distanceKm} KM</span>
                 <span className="text-slate-600">|</span>
                 <span className="text-white font-bold">SPEED:</span>
                 <span className="text-emerald-300 font-mono">{boatSpeedKnots} KTS</span>
@@ -798,7 +1016,7 @@ export default function RescueFieldView() {
 
               <div className="flex items-center gap-2">
                 <span className="text-cyan-300 font-bold">
-                  WAYPOINTS: {waypointsPassed} / {targetIncident.safeWaypoints} SAFE NODES PASSED
+                  WAYPOINTS: {waypointsPassed} SAFE NODES PASSED
                 </span>
                 <span className="text-slate-600">|</span>
                 <span className="text-amber-300 font-bold">MARGIN: {corridorMargin}m</span>
@@ -806,7 +1024,7 @@ export default function RescueFieldView() {
 
               <div>
                 <span>BEARING: </span>
-                <span className="text-white font-black">{targetIncident.bearing}</span>
+                <span className="text-white font-black">{activeTargetInfo.bearing}</span>
               </div>
             </div>
           </div>
