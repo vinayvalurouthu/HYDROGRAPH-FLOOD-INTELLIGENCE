@@ -59,6 +59,15 @@ body,
   background: #1a2640;
   border-radius: 2px;
 }
+
+/* Hide Leaflet Attribution & Platform Labels */
+.leaflet-control-attribution,
+.leaflet-bottom.leaflet-right .leaflet-control-attribution {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
 ::-webkit-scrollbar-thumb:hover {
   background: #243260;
 }

@@ -725,18 +725,31 @@ export default function RoutingView({ activeCity, cityDataset, routingRequest }:
             </g>
           ))}
 
-          {/* Dynamic Landmark Nodes */}
-          {mapLayout?.landmarks.map((lm, idx) => (
-            <g key={idx} transform={`translate(${lm.x}, ${lm.y})`}>
-              <circle r="7" fill="rgba(16,185,129,0.2)" stroke="#10b981" strokeWidth="1.5" />
-              <text y="3" textAnchor="middle" fill="#10b981" fontSize="9">
-                {lm.icon}
-              </text>
-              <text y="18" textAnchor="middle" fill="#6ee7b7" fontSize="8" fontFamily="JetBrains Mono">
-                {lm.label}
-              </text>
-            </g>
-          ))}
+          {/* Dynamic Landmark Nodes (filter out destination and origin to prevent duplicate/merged labels) */}
+          {mapLayout?.landmarks.map((lm, idx) => {
+            const isDestination =
+              routeResult &&
+              (Math.hypot(lm.x - routeResult.toLocation.svgX, lm.y - routeResult.toLocation.svgY) < 25 ||
+               lm.label.toLowerCase() === routeResult.toLocation.name.toLowerCase());
+            const isOrigin =
+              routeResult &&
+              (Math.hypot(lm.x - routeResult.fromLocation.svgX, lm.y - routeResult.fromLocation.svgY) < 25 ||
+               lm.label.toLowerCase() === routeResult.fromLocation.name.toLowerCase());
+
+            if (isDestination || isOrigin) return null;
+
+            return (
+              <g key={idx} transform={`translate(${lm.x}, ${lm.y})`}>
+                <circle r="7" fill="rgba(16,185,129,0.2)" stroke="#10b981" strokeWidth="1.5" />
+                <text y="3" textAnchor="middle" fill="#10b981" fontSize="9">
+                  {lm.icon}
+                </text>
+                <text y="18" textAnchor="middle" fill="#6ee7b7" fontSize="8" fontFamily="JetBrains Mono">
+                  {lm.label}
+                </text>
+              </g>
+            );
+          })}
 
           {/* Dynamic Polylines */}
           {routeResult && (
@@ -816,7 +829,7 @@ export default function RoutingView({ activeCity, cityDataset, routingRequest }:
                 <text y="4" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="bold">
                   ★
                 </text>
-                <text y="22" textAnchor="middle" fill="#6ee7b7" fontSize="9" fontFamily="JetBrains Mono" fontWeight="bold">
+                <text y="24" textAnchor="middle" fill="#6ee7b7" fontSize="9" fontFamily="JetBrains Mono" fontWeight="bold">
                   {routeResult.toLocation.name.toUpperCase()}
                 </text>
               </g>
