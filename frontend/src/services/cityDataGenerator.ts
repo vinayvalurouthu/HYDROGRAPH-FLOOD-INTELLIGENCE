@@ -95,6 +95,16 @@ export const PRESET_CITIES: CityPreset[] = [
     rainfallMmHr: 118,
     waterBody: "Brahmaputra River & Bharalu Basin",
   },
+  {
+    id: "rajam",
+    name: "Rajam",
+    state: "Andhra Pradesh",
+    regionType: "North Coastal Andhra · Srikakulam",
+    center: [18.4659, 83.6610],
+    zoom: 14,
+    rainfallMmHr: 95,
+    waterBody: "Nagavali Basin & Madduvalasa Sluice",
+  },
 ];
 
 // Helper to create GeoJSON LineString from real road coordinates

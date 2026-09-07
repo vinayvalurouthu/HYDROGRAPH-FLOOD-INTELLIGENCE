@@ -70,7 +70,9 @@ describe("ProfileModal", () => {
             state: "Bihar",
             center: [25.5941, 85.1376],
             regionType: "Gangetic Plain",
-            description: "River basin capital",
+            zoom: 13,
+            rainfallMmHr: 88,
+            waterBody: "Ganges River",
           }}
           onSwitchView={handleSwitchView}
         />
