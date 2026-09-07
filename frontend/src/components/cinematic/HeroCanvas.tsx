@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useEffect } from "react";
+import React, { useRef, useMemo, Suspense, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Text, Sparkles } from "@react-three/drei";
 import * as THREE from "three";
@@ -14,18 +14,10 @@ function UndulatingTerrain({ isWarping }: { isWarping: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const geomRef = useRef<THREE.PlaneGeometry>(null);
 
-  // Original vertex positions cache
-  const originalZ = useMemo(() => {
-    const widthSegments = 54;
-    const heightSegments = 40;
-    const count = (widthSegments + 1) * (heightSegments + 1);
-    return new Float32Array(count);
-  }, []);
-
   useFrame(({ clock }) => {
     if (!geomRef.current) return;
     const pos = geomRef.current.attributes.position;
-    const time = clock.elapsedTime * (isWarping ? 4.5 : 1.1);
+    const time = clock.elapsedTime * (isWarping ? 5.0 : 1.2);
 
     for (let i = 0; i < pos.count; i++) {
       const u = pos.getX(i);
@@ -43,20 +35,20 @@ function UndulatingTerrain({ isWarping }: { isWarping: boolean }) {
     <group position={[0, -1.8, -1]} rotation={[-Math.PI / 2.3, 0, 0]}>
       {/* Underlying deep dark ocean floor */}
       <mesh position={[0, 0, -0.05]}>
-        <planeGeometry args={[32, 22, 16, 16]} />
+        <planeGeometry args={[34, 24, 16, 16]} />
         <meshStandardMaterial color="#020612" roughness={0.9} />
       </mesh>
 
       {/* Undulating wireframe elevation grid */}
       <mesh ref={meshRef}>
-        <planeGeometry ref={geomRef} args={[32, 22, 54, 40]} />
+        <planeGeometry ref={geomRef} args={[34, 24, 54, 40]} />
         <meshStandardMaterial
           wireframe
           color="#00f2fe"
           emissive="#00f2fe"
-          emissiveIntensity={isWarping ? 0.9 : 0.45}
+          emissiveIntensity={isWarping ? 1.0 : 0.5}
           transparent
-          opacity={isWarping ? 0.75 : 0.42}
+          opacity={isWarping ? 0.8 : 0.45}
         />
       </mesh>
     </group>
@@ -72,7 +64,6 @@ function Title3D({
   isWarping: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const textRef = useRef<any>(null);
 
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
@@ -85,14 +76,12 @@ function Title3D({
 
   // Expand letter-spacing as user drags slider
   const letterSpacing = 0.18 + dragProgress * 0.16;
-  const glowIntensity = 0.3 + dragProgress * 0.6 + (isWarping ? 1.5 : 0);
+  const glowIntensity = 0.35 + dragProgress * 0.6 + (isWarping ? 1.8 : 0);
 
   return (
     <group ref={groupRef} position={[0, 0.35, 0]}>
-      {/* Main 3D Title */}
+      {/* Main 3D Title (Zero network dependency: uses default embedded typeface) */}
       <Text
-        ref={textRef}
-        font="https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuGKYAZ9hjp-Ek-_EeA.woff"
         fontSize={0.92}
         letterSpacing={letterSpacing}
         position={[0, 0, 0]}
@@ -114,7 +103,6 @@ function Title3D({
 
       {/* Tactical Sub-Headline in 3D Space */}
       <Text
-        font="https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_ad56U.woff"
         fontSize={0.11}
         letterSpacing={0.32}
         position={[0, -0.68, 0.05]}
@@ -189,6 +177,20 @@ function CameraRig({
 }) {
   const { camera } = useThree();
   const warpStartRef = useRef<number | null>(null);
+  const completedRef = useRef<boolean>(false);
+
+  // Safety timer fallback to guarantee transition completes
+  useEffect(() => {
+    if (isWarping) {
+      const timer = setTimeout(() => {
+        if (!completedRef.current) {
+          completedRef.current = true;
+          onWarpComplete();
+        }
+      }, 950);
+      return () => clearTimeout(timer);
+    }
+  }, [isWarping, onWarpComplete]);
 
   useFrame(({ clock, pointer }) => {
     if (!isWarping) {
@@ -205,7 +207,7 @@ function CameraRig({
         warpStartRef.current = clock.elapsedTime;
       }
       const elapsed = clock.elapsedTime - warpStartRef.current;
-      const duration = 1.1; // 1.1 seconds warp
+      const duration = 0.85; // 850ms warp
       const progress = Math.min(1, elapsed / duration);
 
       // Ease in-out cubic acceleration
@@ -223,7 +225,8 @@ function CameraRig({
         persCam.updateProjectionMatrix();
       }
 
-      if (progress >= 1) {
+      if (progress >= 1 && !completedRef.current) {
+        completedRef.current = true;
         onWarpComplete();
       }
     }
@@ -268,33 +271,35 @@ export default function HeroCanvas({
           powerPreference: "high-performance",
         }}
       >
-        {/* Background & Volumetric Fog */}
-        <color attach="background" args={["#030712"]} />
-        <fog attach="fog" args={["#030712", 4.5, 16]} />
+        <Suspense fallback={null}>
+          {/* Background & Volumetric Fog */}
+          <color attach="background" args={["#030712"]} />
+          <fog attach="fog" args={["#030712", 4.5, 16]} />
 
-        {/* Ambient & Directional Lighting */}
-        <ambientLight intensity={0.4} color="#082f49" />
-        <directionalLight position={[0, 6, 4]} intensity={1.2} color="#bae6fd" />
-        <MovingRimLight isWarping={isWarping} />
+          {/* Ambient & Directional Lighting */}
+          <ambientLight intensity={0.45} color="#082f49" />
+          <directionalLight position={[0, 6, 4]} intensity={1.3} color="#bae6fd" />
+          <MovingRimLight isWarping={isWarping} />
 
-        {/* Dynamic Bathymetric Wireframe Terrain */}
-        <UndulatingTerrain isWarping={isWarping} />
+          {/* Dynamic Bathymetric Wireframe Terrain */}
+          <UndulatingTerrain isWarping={isWarping} />
 
-        {/* Floating Digital Dust & Underwater Caustic Particles */}
-        <Sparkles
-          count={100}
-          scale={[14, 8, 9]}
-          size={2.8}
-          speed={0.45}
-          opacity={isWarping ? 0.9 : 0.55}
-          color="#38bdf8"
-        />
+          {/* Floating Digital Dust & Underwater Caustic Particles */}
+          <Sparkles
+            count={90}
+            scale={[14, 8, 9]}
+            size={2.8}
+            speed={0.45}
+            opacity={isWarping ? 0.9 : 0.55}
+            color="#38bdf8"
+          />
 
-        {/* 3D Title Typography & HUD */}
-        <Title3D dragProgress={dragProgress} isWarping={isWarping} />
+          {/* 3D Title Typography & HUD */}
+          <Title3D dragProgress={dragProgress} isWarping={isWarping} />
 
-        {/* Camera Rig with Parallax & Warp Jump */}
-        <CameraRig isWarping={isWarping} onWarpComplete={onWarpComplete} />
+          {/* Camera Rig with Parallax & Warp Jump */}
+          <CameraRig isWarping={isWarping} onWarpComplete={onWarpComplete} />
+        </Suspense>
       </Canvas>
     </div>
   );
