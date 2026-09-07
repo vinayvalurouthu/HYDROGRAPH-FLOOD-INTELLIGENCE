@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HydroGraph — Technical Approach | SIH 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f172a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .slide-container {
+      width: 1440px;
+      height: 810px; /* 16:9 ratio */
+      background: #ffffff;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Top Header ─── */
+    .header {
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      border-bottom: 1.5px solid #e2e8f0;
+      background: #ffffff;
+    }
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-logo svg {
+      width: 32px;
+      height: 32px;
+      color: #0284c7;
+    }
+    .header-logo-text {
+      font-weight: 800;
+      font-size: 19px;
+      letter-spacing: -0.5px;
+      color: #0369a1;
+      text-transform: uppercase;
+    }
+    .header-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: #1e293b;
+      text-transform: uppercase;
+      margin-left: -50px;
+    }
+    .sih-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .sih-lamp {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #fff7ed;
+      border: 1.5px solid #ea580c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sih-text {
+      text-align: right;
+    }
+    .sih-title {
+      font-size: 10.5px;
+      font-weight: 800;
+      color: #ea580c;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      line-height: 1.2;
+    }
+    .sih-sub {
+      font-size: 9px;
+      font-weight: 700;
+      color: #15803d;
+      letter-spacing: 0.5px;
+    }
+
+    /* ─── Main Content ─── */
+    .main-body {
+      flex: 1;
+      display: flex;
+      padding: 16px 24px 12px 24px;
+      gap: 18px;
+      background: #f8fafc;
+      position: relative;
+    }
+
+    /* ─── Left Column: Tech Stack ─── */
+    .tech-stack-panel {
+      width: 250px;
+      background: #ffffff;
+      border: 1.5px solid #bae6fd;
+      border-radius: 10px;
+      padding: 14px 14px 10px 14px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 12px rgba(186, 230, 253, 0.25);
+    }
+    .panel-header-blue {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #0284c7;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e0f2fe;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .stack-section {
+      margin-bottom: 12px;
+    }
+    .stack-section-title {
+      font-size: 10px;
+      font-weight: 800;
+      color: #475569;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .stack-chips-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .tech-chip {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 5px 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .chip-name {
+      font-size: 9px;
+      font-weight: 700;
+      color: #1e293b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .repo-box {
+      margin-top: auto;
+      padding-top: 10px;
+      border-top: 1px dashed #cbd5e1;
+    }
+    .repo-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 3px;
+    }
+    .repo-link {
+      font-size: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #0284c7;
+      text-decoration: underline;
+      word-break: break-all;
+      line-height: 1.3;
+    }
+
+    /* ─── Right Diagram Canvas ─── */
+    .diagram-canvas {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+    }
+
+    /* Layer 1: Top Row (Users -> Platform + AI Layer) */
+    .layer-row-top {
+      display: grid;
+      grid-template-columns: 140px 1fr 260px;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    /* Users Box */
+    .box-users {
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff;
+      border-radius: 9px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 10px rgba(3, 105, 161, 0.2);
+    }
+    .box-users-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      border-bottom: 1px solid rgba(255,255,255,0.25);
+      padding-bottom: 4px;
+    }
+    .users-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+      justify-content: space-around;
+    }
+    .users-list li {
+      font-size: 9px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      line-height: 1.2;
+    }
+    .users-list li span {
+      background: rgba(255,255,255,0.2);
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+    }
+
+    /* Platform Box */
+    .box-platform {
+      background: #ffffff;
+      border: 1.5px solid #0284c7;
+      border-radius: 9px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 10px rgba(2, 132, 199, 0.12);
+    }
+    .platform-header {
+      background: #0284c7;
+      color: #ffffff;
+      border-radius: 5px;
+      padding: 4px 8px;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .platform-capsules {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      flex: 1;
+      align-items: center;
+    }
+    .capsule {
+      border: 1.2px solid #bae6fd;
+      background: #f0f9ff;
+      border-radius: 6px;
+      padding: 6px 4px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .capsule-icon {
+      font-size: 13px;
+    }
+    .capsule-text {
+      font-size: 8.5px;
+      font-weight: 700;
+      color: #0369a1;
+      line-height: 1.1;
+    }
+
+    /* AI Layer Box */
+    .box-ai {
+      background: #ffffff;
+      border: 1.5px solid #16a34a;
+      border-radius: 9px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 10px rgba(22, 163, 74, 0.12);
+    }
+    .ai-header {
+      background: #16a34a;
+      color: #ffffff;
+      border-radius: 5px;
+      padding: 4px 8px;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .ai-items {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      justify-content: space-around;
+    }
+    .ai-pill {
+      background: #f0fdf4;
+      border-left: 3px solid #16a34a;
+      padding: 3px 6px;
+      font-size: 8.5px;
+      font-weight: 600;
+      color: #14532d;
+      border-radius: 0 4px 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Layer 2: Physics Execution Engine (Purple) */
+    .box-physics {
+      background: #ffffff;
+      border: 1.5px solid #7c3aed;
+      border-radius: 9px;
+      padding: 8px 12px;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.12);
+    }
+    .physics-header {
+      background: linear-gradient(90deg, #6d28d9 0%, #7c3aed 100%);
+      color: #ffffff;
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .physics-modules {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+    }
+    .physics-card {
+      border: 1px solid #ddd6fe;
+      background: #faf5ff;
+      border-radius: 6px;
+      padding: 8px 6px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    .physics-icon {
+      font-size: 14px;
+    }
+    .physics-title {
+      font-size: 9.5px;
+      font-weight: 800;
+      color: #5b21b6;
+    }
+    .physics-desc {
+      font-size: 8px;
+      font-weight: 500;
+      color: #6b21a8;
+      line-height: 1.15;
+    }
+
+    /* Layer 3: Middle Row (Visualization & Results + Data Management) */
+    .layer-row-middle {
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    /* Visualization Box (Orange) */
+    .box-viz {
+      background: #ffffff;
+      border: 1.5px solid #ea580c;
+      border-radius: 9px;
+      padding: 8px 12px;
+      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.12);
+    }
+    .viz-header {
+      background: linear-gradient(90deg, #c2410c 0%, #ea580c 100%);
+      color: #ffffff;
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .viz-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+    .viz-card {
+      border: 1px solid #ffedd5;
+      background: #fffaf5;
+      border-radius: 6px;
+      padding: 7px 5px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    .viz-icon {
+      font-size: 14px;
+    }
+    .viz-title {
+      font-size: 9px;
+      font-weight: 800;
+      color: #9a3412;
+      line-height: 1.15;
+    }
+    .viz-desc {
+      font-size: 7.5px;
+      color: #c2410c;
+      line-height: 1.1;
+    }
+
+    /* Data Management Box (Red) */
+    .box-data {
+      background: #ffffff;
+      border: 1.5px solid #dc2626;
+      border-radius: 9px;
+      padding: 8px 10px;
+      box-shadow: 0 4px 12px rgba(220, 38, 38, 0.12);
+    }
+    .data-header {
+      background: #dc2626;
+      color: #ffffff;
+      border-radius: 5px;
+      padding: 4px 8px;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .data-items {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      justify-content: space-around;
+    }
+    .data-pill {
+      background: #fef2f2;
+      border-left: 3px solid #dc2626;
+      padding: 3px 6px;
+      font-size: 8.5px;
+      font-weight: 600;
+      color: #991b1b;
+      border-radius: 0 4px 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Layer 4: Bottom Row (Infrastructure + Legend) */
+    .layer-row-bottom {
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    /* Infrastructure Box (Navy Blue) */
+    .box-infra {
+      background: #ffffff;
+      border: 1.5px solid #0284c7;
+      border-radius: 9px;
+      padding: 8px 12px;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.12);
+    }
+    .infra-header {
+      background: linear-gradient(90deg, #0369a1 0%, #0284c7 100%);
+      color: #ffffff;
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .infra-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+    .infra-card {
+      border: 1px solid #e0f2fe;
+      background: #f8fafc;
+      border-radius: 6px;
+      padding: 7px 5px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    .infra-icon {
+      font-size: 14px;
+    }
+    .infra-title {
+      font-size: 9px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .infra-sub {
+      font-size: 7.5px;
+      color: #475569;
+      font-weight: 600;
+    }
+
+    /* Legend Box (White/Bordered) */
+    .box-legend {
+      background: #ffffff;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 9px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+    .legend-title {
+      font-size: 8.5px;
+      font-weight: 800;
+      color: #64748b;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 8.5px;
+      font-weight: 700;
+      color: #334155;
+    }
+    .legend-line {
+      width: 28px;
+      height: 3px;
+      border-radius: 2px;
+      position: relative;
+    }
+    .legend-line::after {
+      content: '';
+      position: absolute;
+      right: -2px;
+      top: -2.5px;
+      width: 0;
+      height: 0;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+    }
+    .line-blue { background: #0284c7; }
+    .line-blue::after { border-left: 5px solid #0284c7; }
+    .line-purple { background: #7c3aed; }
+    .line-purple::after { border-left: 5px solid #7c3aed; }
+    .line-green { background: #16a34a; }
+    .line-green::after { border-left: 5px solid #16a34a; }
+    .line-red { background: #dc2626; }
+    .line-red::after { border-left: 5px solid #dc2626; }
+    .line-dashed {
+      border-top: 2px dashed #059669;
+      height: 0;
+    }
+    .line-dashed::after {
+      top: -5px;
+      border-left: 5px solid #059669;
+    }
+
+    /* ─── Footer ─── */
+    .footer {
+      height: 32px;
+      background: #0284c7;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .footer-left {
+      display: flex;
+      gap: 16px;
+    }
+    .footer-right {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="slide-container">
+
+    <!-- ─── HEADER BAR ─── -->
+    <header class="header">
+      <div class="header-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 12h2.5c2 0 3.5-3 5-3s3 6 4.5 6 2.5-3 4.5-3 3 2 3.5 2H22"/>
+          <path d="M2 17h2.5c2 0 3.5-2 5-2s3 4 4.5 4 2.5-2 4.5-2 3 1 3.5 1H22"/>
+        </svg>
+        <span class="header-logo-text">HydroGraph</span>
+      </div>
+
+      <h1 class="header-title">Technical Approach</h1>
+
+      <div class="sih-badge">
+        <div class="sih-lamp">
+          <span style="font-size: 14px;">💡</span>
+        </div>
+        <div class="sih-text">
+          <div class="sih-title">Smart India Hackathon</div>
+          <div class="sih-sub">2026 Edition</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ─── MAIN BODY ─── -->
+    <main class="main-body">
+
+      <!-- ─── LEFT COLUMN: TECH STACK ─── -->
+      <aside class="tech-stack-panel">
+        <div class="panel-header-blue">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+            <polyline points="2 17 12 22 22 17"/>
+            <polyline points="2 12 12 17 22 12"/>
+          </svg>
+          Tech-Stack
+        </div>
+
+        <!-- Frontend -->
+        <div class="stack-section">
+          <div class="stack-section-title">Frontend</div>
+          <div class="stack-chips-grid">
+            <div class="tech-chip"><span class="chip-dot" style="background: #e34c26;"></span><span class="chip-name">HTML / CSS</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #f7df1e;"></span><span class="chip-name">JavaScript</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #61dafb;"></span><span class="chip-name">React 19</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #38bdf8;"></span><span class="chip-name">Tailwind v4</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #199900;"></span><span class="chip-name">Leaflet GIS</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #8884d8;"></span><span class="chip-name">Recharts</span></div>
+          </div>
+        </div>
+
+        <!-- Backend & DB -->
+        <div class="stack-section">
+          <div class="stack-section-title">Backend & Database</div>
+          <div class="stack-chips-grid">
+            <div class="tech-chip"><span class="chip-dot" style="background: #009688;"></span><span class="chip-name">FastAPI</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #2b5b84;"></span><span class="chip-name">Python 3.12</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #003b57;"></span><span class="chip-name">SQLite DB</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #336791;"></span><span class="chip-name">PostGIS / GIS</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #e10098;"></span><span class="chip-name">Pydantic v2</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #d71f00;"></span><span class="chip-name">SQLAlchemy</span></div>
+          </div>
+        </div>
+
+        <!-- AI & Simulation -->
+        <div class="stack-section">
+          <div class="stack-section-title">AI & Hydrodynamic</div>
+          <div class="stack-chips-grid">
+            <div class="tech-chip"><span class="chip-dot" style="background: #0284c7;"></span><span class="chip-name">PySTEPS</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #ea580c;"></span><span class="chip-name">EPA SWMM</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #dc2626;"></span><span class="chip-name">LISFLOOD</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #ee4c2c;"></span><span class="chip-name">PyTorch GNN</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #7c3aed;"></span><span class="chip-name">NetworkX</span></div>
+            <div class="tech-chip"><span class="chip-dot" style="background: #16a34a;"></span><span class="chip-name">OSRM Engine</span></div>
+          </div>
+        </div>
+
+        <!-- GitHub Repo -->
+        <div class="repo-box">
+          <div class="repo-label">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            GitHub Repository:
+          </div>
+          <div class="repo-link">github.com/vinayvalurouthu/HYDROGRAPH-FLOOD-INTELLIGENCE</div>
+        </div>
+      </aside>
+
+      <!-- ─── RIGHT DIAGRAM CANVAS ─── -->
+      <section class="diagram-canvas">
+
+        <!-- LAYER 1: USERS -> PLATFORM + AI LAYER -->
+        <div class="layer-row-top">
+          <!-- Users Box -->
+          <div class="box-users">
+            <div class="box-users-title">
+              <span>👥</span> Users
+            </div>
+            <ul class="users-list">
+              <li><span>🏛️</span> Municipal SDMA</li>
+              <li><span>🚒</span> NDRF / Responders</li>
+              <li><span>📱</span> Vulnerable Citizens</li>
+            </ul>
+          </div>
+
+          <!-- Command Platform -->
+          <div class="box-platform">
+            <div class="platform-header">HydroGraph Command & Decision Platform</div>
+            <div class="platform-capsules">
+              <div class="capsule">
+                <span class="capsule-icon">🗺️</span>
+                <span class="capsule-text">Flood Map<br>GIS 2D/3D</span>
+              </div>
+              <div class="capsule">
+                <span class="capsule-icon">📍</span>
+                <span class="capsule-text">Hotspot<br>Matrix</span>
+              </div>
+              <div class="capsule">
+                <span class="capsule-icon">🧭</span>
+                <span class="capsule-text">Flood-Safe<br>Routing</span>
+              </div>
+              <div class="capsule">
+                <span class="capsule-icon">🏥</span>
+                <span class="capsule-text">Smart<br>Shelters</span>
+              </div>
+              <div class="capsule">
+                <span class="capsule-icon">🚨</span>
+                <span class="capsule-text">Citizen SOS<br>& Dispatch</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Layer (Top Right) -->
+          <div class="box-ai">
+            <div class="ai-header">AI & Intelligence Layer</div>
+            <div class="ai-items">
+              <div class="ai-pill">🌧️ PySTEPS Radar Nowcast (6h)</div>
+              <div class="ai-pill">🧠 Spatio-Temporal GNN Surrogate</div>
+              <div class="ai-pill">🔍 Drainage Residual Anomaly</div>
+              <div class="ai-pill">📊 Multi-Source Confidence Score</div>
+              <div class="ai-pill">💥 Exposure & Impact Predictor</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LAYER 2: PHYSICS EXECUTION ENGINE (Purple) -->
+        <div class="box-physics">
+          <div class="physics-header">Physics & Hydrodynamic Execution Engine</div>
+          <div class="physics-modules">
+            <div class="physics-card">
+              <span class="physics-icon">📡</span>
+              <div class="physics-title">PySTEPS</div>
+              <div class="physics-desc">Optical Flow Radar Extrapolation</div>
+            </div>
+            <div class="physics-card">
+              <span class="physics-icon">🚰</span>
+              <div class="physics-title">EPA SWMM</div>
+              <div class="physics-desc">1D Storm Drainage Hydraulic Solver</div>
+            </div>
+            <div class="physics-card">
+              <span class="physics-icon">🌊</span>
+              <div class="physics-title">LISFLOOD-FP</div>
+              <div class="physics-desc">2D Surface Inundation Diffusion</div>
+            </div>
+            <div class="physics-card">
+              <span class="physics-icon">🔄</span>
+              <div class="physics-title">Coupled 1D/2D</div>
+              <div class="physics-desc">Bi-directional Manhole Flux Exchange</div>
+            </div>
+            <div class="physics-card">
+              <span class="physics-icon">🏞️</span>
+              <div class="physics-title">CWC Dam Boundary</div>
+              <div class="physics-desc">River Discharge & Reservoir Hydrograph</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LAYER 3: VISUALIZATION & DATA MANAGEMENT -->
+        <div class="layer-row-middle">
+          <!-- Visualization & Results (Orange) -->
+          <div class="box-viz">
+            <div class="viz-header">Visualization & Operational Intelligence</div>
+            <div class="viz-grid">
+              <div class="viz-card">
+                <span class="viz-icon">🌊</span>
+                <div class="viz-title">Depth Contours</div>
+                <div class="viz-desc">Live Inundation Depth (cm)</div>
+              </div>
+              <div class="viz-card">
+                <span class="viz-icon">⚠️</span>
+                <div class="viz-title">Hotspot Ranking</div>
+                <div class="viz-desc">Street Vulnerability Score</div>
+              </div>
+              <div class="viz-card">
+                <span class="viz-icon">🛣️</span>
+                <div class="viz-title">Safe Evacuation</div>
+                <div class="viz-desc">Water-Penalty Isochrones</div>
+              </div>
+              <div class="viz-card">
+                <span class="viz-icon">🕸️</span>
+                <div class="viz-title">Drainage Graph</div>
+                <div class="viz-desc">Surcharge & Pipe Choke Nodes</div>
+              </div>
+              <div class="viz-card">
+                <span class="viz-icon">🎛️</span>
+                <div class="viz-title">Scenario Sandbox</div>
+                <div class="viz-desc">Rain & Dam Gate Sliders</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Data Management (Red) -->
+          <div class="box-data">
+            <div class="data-header">Operational Data Management</div>
+            <div class="data-items">
+              <div class="data-pill">🛰️ IMD Doppler Radar (DWR)</div>
+              <div class="data-pill">📈 CWC River Gauges & Dams</div>
+              <div class="data-pill">🗺️ OpenStreetMap & High-Res DEM</div>
+              <div class="data-pill">🆘 Offline SOS IndexedDB Queue</div>
+              <div class="data-pill">⏮️ Historical Flood Replay Store</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LAYER 4: INFRASTRUCTURE & LEGEND -->
+        <div class="layer-row-bottom">
+          <!-- Infrastructure (Navy/Blue) -->
+          <div class="box-infra">
+            <div class="infra-header">Infrastructure & Core Framework</div>
+            <div class="infra-grid">
+              <div class="infra-card">
+                <span class="infra-icon">⚛️</span>
+                <div class="infra-title">React 19</div>
+                <div class="infra-sub">Command UI & PWA</div>
+              </div>
+              <div class="infra-card">
+                <span class="infra-icon">⚡</span>
+                <div class="infra-title">FastAPI</div>
+                <div class="infra-sub">Async REST / WS</div>
+              </div>
+              <div class="infra-card">
+                <span class="infra-icon">🗄️</span>
+                <div class="infra-title">PostGIS / SQLite</div>
+                <div class="infra-sub">Spatial R-Tree Index</div>
+              </div>
+              <div class="infra-card">
+                <span class="infra-icon">🧭</span>
+                <div class="infra-title">OSRM Engine</div>
+                <div class="infra-sub">Dynamic Graph Routing</div>
+              </div>
+              <div class="infra-card">
+                <span class="infra-icon">🚀</span>
+                <div class="infra-title">Docker Edge</div>
+                <div class="infra-sub">Municipal Edge Node</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Legend -->
+          <div class="box-legend">
+            <div class="legend-title">System Flow Legend</div>
+            <div class="legend-item">
+              <div class="legend-line line-blue"></div>
+              <span>User Action Flow</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line line-purple"></div>
+              <span>Hydrodynamic Sim Flow</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line line-green"></div>
+              <span>AI Intelligence Flow</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line line-red"></div>
+              <span>Data Ingestion Flow</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line line-dashed"></div>
+              <span>Real-Time Feedback Loop</span>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+
+    <!-- ─── FOOTER ─── -->
+    <footer class="footer">
+      <div class="footer-left">
+        <span>Team HydroGraph</span>
+        <span>|</span>
+        <span>Smart India Hackathon 2026</span>
+        <span>|</span>
+        <span>Problem Category: Disaster Management & Urban Intelligence</span>
+      </div>
+      <div class="footer-right">Slide 3</div>
+    </footer>
+
+  </div>
+
+</body>
+</html>
