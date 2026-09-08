@@ -429,7 +429,7 @@ function TacticalNavView({
               FLOOD AVOIDANCE ACTIVE
             </div>
             <div className="text-[10px] text-emerald-400/70">
-              Antigravity Route Clear
+              Safe Route Clear
             </div>
           </div>
         </div>

@@ -13,7 +13,6 @@ import {
   Pause,
   X,
   Volume2,
-  ShieldCheck,
   Radio,
 } from "lucide-react";
 import {
@@ -889,16 +888,6 @@ export default function RoutingView({ activeCity, cityDataset, routingRequest }:
                 </div>
               </div>
 
-              {/* Live Safety Status Badge */}
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-800/60">
-                <ShieldCheck size={16} className="text-emerald-400" />
-                <div>
-                  <div className="text-[10px] font-mono font-bold text-emerald-300 uppercase tracking-wider">
-                    FLOOD AVOIDANCE ACTIVE
-                  </div>
-                  <div className="text-[9px] text-emerald-400/80">Antigravity Route Clear</div>
-                </div>
-              </div>
 
               {/* Navigation Play / Pause / Exit Controls */}
               <div className="flex items-center gap-2">

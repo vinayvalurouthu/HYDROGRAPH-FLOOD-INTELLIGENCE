@@ -1,5 +1,5 @@
 /**
- * Dynamic Flood-Aware Routing Engine ("Antigravity" Pathfinding).
+ * Dynamic Flood-Aware Routing Engine (Autonomous Pathfinding).
  * Implements A* / Dijkstra shortest path calculation on a flood-weighted graph.
  * Dynamically avoids high flood risk zones and road closures, generating safe & alternative corridors.
  */
